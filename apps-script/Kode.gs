@@ -1,7 +1,7 @@
 /* =====================================================================
  * SWIM ACADEMY — Backend Google Apps Script (REST API JSON)
  * Kode.gs : pintu masuk doPost/doGet, adaptor Google Sheets ber-cache,
- *           lingkungan (env) untuk Inti, setup idempoten, trigger, backup.
+ *           lingkungan (env) untuk Inti, setup idempoten, trigger harian, backup.
  * Semua aturan bisnis ada di Inti.gs (identik dengan js/inti.js di frontend).
  *
  * Deploy  : Web App · Execute as: Me · Who has access: Anyone
@@ -31,7 +31,7 @@ function doGet(e) {
       if (!s.cek.ok) return json_({ ok: false, error: { message: 'Snapshot ditolak server: ' + s.cek.pesan, code: 'SNAPSHOT' } });
       return json_({ ok: true, data: s.snapshot });
     }
-    if (p.action === 'publicAset') return json_(asetPublik_(p.jenis));
+    if (p.action === 'publicAset') return json_(asetPublik_(p.jenis, p.i));
     return json_({ ok: true, app: 'Swim Academy API', v: Inti.VERSI, waktu: Inti.util.waktuWIB(Date.now()) });
   } catch (err) { return json_({ ok: false, error: { message: err.message, code: 'SERVER' } }); }
 }
@@ -125,7 +125,6 @@ var DB = {
     var m = rows.map(function (r) { return h.map(function (k) { var v = r[k]; if (v === undefined) v = (sk.angka || []).indexOf(k) >= 0 ? 0 : ''; return self.nilaiTulis_(v); }); });
     sh.getRange(last + 1, 1, m.length, h.length).setValues(m);
     if (this._memo[t]) rows.forEach(function (r, i) { var o = { _r: last + 1 + i }; h.forEach(function (k) { o[k] = r[k] === undefined ? ((sk.angka || []).indexOf(k) >= 0 ? 0 : '') : ((sk.angka || []).indexOf(k) >= 0 ? Number(r[k]) || 0 : String(r[k])); }); self._memo[t].push(o); });
-    if (t === 'AntrianNotif' || t === 'DE_Antrean') tandaiAntrian_(true);
     this._sentuh[t] = 1;
   },
   ubah: function (t, rows) {
@@ -171,7 +170,7 @@ var DB = {
 var _ENV = null;
 function env_() {
   if (_ENV) return _ENV;
-  var IZIN_RAHASIA_TULIS = ['FONNTE_TOKEN'], IZIN_RAHASIA_BACA = ['PEPPER', 'SYNC_SECRET', 'FONNTE_TOKEN', 'GITHUB_TOKEN'];
+  var IZIN_RAHASIA_BACA = ['PEPPER', 'SYNC_SECRET', 'GITHUB_TOKEN'];
   _ENV = {
     mode: 'gas', db: DB,
     sekarang: function () { return Date.now(); },
@@ -186,7 +185,6 @@ function env_() {
       try { return fn(); } finally { DB._kedalaman--; try { DB.selesaiTulis_(); } finally { lock.releaseLock(); } }
     },
     rahasia: function (k) { return IZIN_RAHASIA_BACA.indexOf(k) >= 0 ? prop_(k) : ''; },
-    setRahasia: function (k, v) { if (IZIN_RAHASIA_TULIS.indexOf(k) < 0) throw new Error('Kunci rahasia tidak diizinkan.'); if (v) setProp_(k, v); else delProp_(k); },
     cacheGet: function (k) { return CacheService.getScriptCache().get(k); },
     cachePut: function (k, v, ttl) { CacheService.getScriptCache().put(k, String(v), ttl || 600); },
     versiTabel: function (list) { return list.map(function (t) { return DB.versi(t); }).join('.'); },
@@ -194,11 +192,8 @@ function env_() {
     urlBerkas: function (id, publik) { return !id ? '' : publik ? 'https://drive.google.com/file/d/' + id + '/view' : 'berkas:' + id; },
     ambilBerkas: ambilBerkas_,
     dispatchGitHub: dispatchGitHub_,
-    waKirim: fonnteKirimBanyak_, waValidasi: fonnteValidasi_, waDevice: fonnteDevice_,
-    emailKirim: kirimEmail_, emailKuota: function () { return MailApp.getRemainingDailyQuota(); },
-    htmlKePdf: function (html, judul) { var b = Utilities.newBlob(html, 'text/html', 'laporan.html').getAs('application/pdf'); return Utilities.base64Encode(b.getBytes()); },
-    renderDokumen: renderDokumen_, pindaiTemplate: pindaiTemplate_, buatTemplateBawaan: buatTemplateBawaan_,
-    pasangTriggerNotif: function () { pasangTrigger_(); }
+    emailKirim: kirimEmail_,
+    htmlKePdf: function (html, judul) { var b = Utilities.newBlob(html, 'text/html', 'laporan.html').getAs('application/pdf'); return Utilities.base64Encode(b.getBytes()); }
   };
   return _ENV;
 }
@@ -209,7 +204,6 @@ function acak_(n, huruf) {
   while (s.length < n) Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid()).forEach(function (b) { if (s.length < n) s += huruf[(b & 0xff) % huruf.length]; });
   return s;
 }
-function tandaiAntrian_(ada) { CacheService.getScriptCache().put('ANTRIAN_ADA', ada ? '1' : '0', 21600); if (ada) setProp_('ANTRIAN_ADA', '1'); else delProp_('ANTRIAN_ADA'); }
 
 /* ---------- Drive ---------- */
 function folderApp_(jalur) {
@@ -221,9 +215,9 @@ function simpanBerkas_(o) {
   var blob = Utilities.newBlob(Utilities.base64Decode(o.base64), o.mime, o.nama), f = folderApp_(o.folder).createFile(blob);
   if (o.publik || /^(Logo|Materi)/.test(o.folder)) f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   var publik = o.publik || /^(Logo|Materi)/.test(o.folder);
-  return { id: f.getId(), url: publik ? (/^image\//.test(o.mime) ? 'https://drive.google.com/thumbnail?id=' + f.getId() + '&sz=w512' : 'https://drive.google.com/file/d/' + f.getId() + '/view') : 'berkas:' + f.getId() };
+  return { id: f.getId(), url: publik ? (/^image\//.test(o.mime) ? 'https://drive.google.com/thumbnail?id=' + f.getId() + '&sz=w' + (o.lebar || 512) : 'https://drive.google.com/file/d/' + f.getId() + '/view') : 'berkas:' + f.getId() };
 }
-/* Hanya berkas di dalam folder aplikasi yang boleh diambil (bukti bayar, PDF dokumen) */
+/* Hanya berkas di dalam folder aplikasi yang boleh diambil (bukti bayar, materi) */
 function ambilBerkas_(id) {
   var f; try { f = DriveApp.getFileById(id); } catch (e) { throw new Error('Berkas tidak ditemukan.'); }
   var root = prop_('ROOT_FOLDER_ID'), ok = false, antre = [], it = f.getParents();
@@ -233,10 +227,15 @@ function ambilBerkas_(id) {
   if (f.getSize() > 8 * 1024 * 1024) throw new Error('Berkas terlalu besar untuk ditampilkan.');
   return { nama: f.getName(), mime: f.getMimeType(), base64: Utilities.base64Encode(f.getBlob().getBytes()) };
 }
-function asetPublik_(jenis) {
-  var id = Inti.snapshotPublikEnv(env_()).snapshot[jenis === 'favicon' ? 'favicon' : 'logo'] || '', m = String(id).match(/[-\w]{25,}/);
-  if (!m) return { ok: false, error: { message: 'Aset belum diunggah.', code: 'NOT_FOUND' } };
-  var f = DriveApp.getFileById(m[0]);
+/* Aset publik untuk workflow sinkron: logo, favicon, atau gambar slide halaman masuk ke-i (hanya file Drive) */
+function asetPublik_(jenis, i) {
+  var snap = Inti.snapshotPublikEnv(env_()).snapshot, url;
+  if (jenis === 'login') url = ((snap.login || {}).slides || [])[Number(i) || 0] || '';
+  else url = snap[jenis === 'favicon' ? 'favicon' : 'logo'] || '';
+  var m = /drive\.google\.com/.test(url) ? String(url).match(/[-\w]{25,}/) : null;
+  if (!m) return { ok: false, error: { message: 'Aset belum diunggah ke Drive.', code: 'NOT_FOUND' } };
+  var f; try { f = DriveApp.getFileById(m[0]); } catch (e) { return { ok: false, error: { message: 'File Drive tidak bisa dibuka (pastikan dibagikan / milik akun ini).', code: 'NOT_FOUND' } }; }
+  if (f.getSize() > 6 * 1024 * 1024) return { ok: false, error: { message: 'Gambar lebih dari 6 MB.', code: 'BESAR' } };
   return { ok: true, data: { mime: f.getMimeType(), nama: f.getName(), base64: Utilities.base64Encode(f.getBlob().getBytes()) } };
 }
 
@@ -253,7 +252,7 @@ function dispatchGitHub_(info) {
   } catch (e) { return { ok: false, pesan: 'Koneksi GitHub gagal: ' + e.message }; }
 }
 
-/* ---------- Email ---------- */
+/* ---------- Email ringkas ke Owner (kunci absensi dibuka, sinkron gagal berulang) ---------- */
 function kirimEmail_(o) {
   try {
     var html = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">' +
@@ -264,13 +263,7 @@ function kirimEmail_(o) {
   } catch (e) { return { ok: false, respon: e.message }; }
 }
 
-/* ---------- Trigger: antrean notifikasi & dokumen (1 menit), harian (00:10) ---------- */
-function prosesAntrianLatar() {
-  var c = CacheService.getScriptCache().get('ANTRIAN_ADA');
-  if (c === '0' || (c === null && !prop_('ANTRIAN_ADA'))) return;   // keluar cepat: hemat kuota trigger
-  var env = env_(), n = Inti.prosesNotifLatar(env), d = Inti.prosesDokumenLatar(env);
-  if (!n.sisa && !d.sisa) tandaiAntrian_(false);
-}
+/* ---------- Trigger harian (00:10 WIB): paket kedaluwarsa + backup ---------- */
 function tugasHarianLatar() {
   var r = Inti.tugasHarian(env_());
   backupHarian_();
@@ -283,8 +276,11 @@ function backupHarian_() {
   while (it.hasNext()) { var f = it.next(); if (f.getDateCreated().getTime() < batas) f.setTrashed(true); }
 }
 function pasangTrigger_() {
-  var ada = {}; ScriptApp.getProjectTriggers().forEach(function (t) { ada[t.getHandlerFunction()] = 1; });
-  if (!ada.prosesAntrianLatar) ScriptApp.newTrigger('prosesAntrianLatar').timeBased().everyMinutes(1).create();
+  var ada = {};
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'prosesAntrianLatar') ScriptApp.deleteTrigger(t);   // sisa versi 1.0.0 (antrean WA/dokumen sudah dihapus)
+    else ada[t.getHandlerFunction()] = 1;
+  });
   if (!ada.tugasHarianLatar) ScriptApp.newTrigger('tugasHarianLatar').timeBased().atHour(0).nearMinute(10).everyDays(1).inTimezone('Asia/Jakarta').create();
 }
 function hangatkan_() {
@@ -295,13 +291,13 @@ function hangatkan_() {
 /* =====================================================================
  * SETUP — jalankan dari editor. Aman diulang (idempoten).
  * ===================================================================== */
-var SHEET_TERKUNCI = ['Config_Terkunci', 'Harga_Paket', 'Tarif_Honor', 'Aturan_Bisnis', 'Hak_Akses', 'Log_Audit', 'Pengguna', 'DE_Pejabat'];
+var SHEET_TERKUNCI = ['Config_Terkunci', 'Harga_Paket', 'Tarif_Honor', 'Aturan_Bisnis', 'Hak_Akses', 'Log_Audit', 'Pengguna'];
 function setupAppEnvironment() {
   var log = [];
   /* 1. Folder Drive */
   var root = prop_('ROOT_FOLDER_ID') ? DriveApp.getFolderById(prop_('ROOT_FOLDER_ID')) : null;
   if (!root) { root = DriveApp.createFolder('SwimAcademy'); setProp_('ROOT_FOLDER_ID', root.getId()); log.push('+ folder SwimAcademy'); }
-  ['Logo', 'BuktiBayar', 'Materi', 'Dokumen', 'Template', 'Backup'].forEach(function (n) { folderApp_(n); });
+  ['Logo', 'Logo/Masuk', 'BuktiBayar', 'Materi', 'Backup'].forEach(function (n) { folderApp_(n); });
   /* 2. Spreadsheet */
   var ss;
   if (prop_('SPREADSHEET_ID')) ss = SpreadsheetApp.openById(prop_('SPREADSHEET_ID'));
@@ -329,12 +325,11 @@ function setupAppEnvironment() {
   if (!prop_('TOKEN_SECRET')) { setProp_('TOKEN_SECRET', acak_(64)); log.push('+ TOKEN_SECRET'); }
   if (!prop_('PEPPER')) { setProp_('PEPPER', acak_(32)); log.push('+ PEPPER'); }
   if (!prop_('SYNC_SECRET')) { setProp_('SYNC_SECRET', acak_(40)); log.push('+ SYNC_SECRET (salin ke GitHub Secret SYNC_SECRET)'); }
-  /* 5. Data awal + akun Owner + template dokumen bawaan */
-  var env = env_(), tpl = {};
-  try { tpl = buatTemplateBawaan_(true); } catch (e) { log.push('! template dokumen belum dibuat: ' + e.message); }
-  var h = Inti.setupAwal(env, { template: tpl });
+  /* 5. Data awal + akun Owner */
+  var env = env_();
+  var h = Inti.setupAwal(env, {});
   log = log.concat(h.log);
-  pasangTrigger_(); log.push('✓ trigger antrean (1 menit) & harian (00:10)');
+  pasangTrigger_(); log.push('✓ trigger harian (00:10 WIB)');
   /* 6. Catatan baca-saja (Kelas B) */
   var cat = ss.getSheetByName('AppConfig') || ss.insertSheet('AppConfig');
   cat.clear(); cat.getRange(1, 1, 5, 2).setValues([['key', 'value (catatan baca-saja; sumber kebenaran: Script Properties)'], ['SPREADSHEET_ID', ss.getId()], ['ROOT_FOLDER_ID', root.getId()], ['VERSI_APP', Inti.VERSI], ['SETUP_AT', Inti.util.waktuWIB(Date.now())]]);
@@ -369,5 +364,4 @@ function rotasiTokenSecret() { setProp_('TOKEN_SECRET', acak_(64)); Logger.log('
 function cekPerforma() {
   var t = Date.now(); hangatkan_(); Logger.log('Hangatkan: ' + (Date.now() - t) + ' ms');
   Logger.log('Trigger: ' + ScriptApp.getProjectTriggers().map(function (x) { return x.getHandlerFunction(); }).join(', '));
-  Logger.log('Antrean: ' + (CacheService.getScriptCache().get('ANTRIAN_ADA') || prop_('ANTRIAN_ADA') || '0'));
 }

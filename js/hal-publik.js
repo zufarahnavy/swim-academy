@@ -1,39 +1,80 @@
 /* =====================================================================
- * HALAMAN PUBLIK — Masuk, Formulir Pendaftaran (link resmi), Verifikasi dokumen
+ * HALAMAN PUBLIK — Masuk (split-screen + slideshow diatur Admin), Formulir Pendaftaran (link resmi)
  * ===================================================================== */
 (function (W, D) {
   'use strict';
   var e = MR.U.e, ik = W.ik, F = W.F, R = MR.Router;
-  var OMBAK = '<svg class="ombak-bawah" viewBox="0 0 1200 160" preserveAspectRatio="none" aria-hidden="true"><path fill="rgba(56,189,248,.18)" d="M0 70c120-30 220-30 340 0s220 30 340 0 220-30 340 0 120 15 180 10v80H0z"/><path fill="rgba(56,189,248,.12)" d="M0 100c150-35 260-35 400 0s250 35 400 0 260-35 400 0v60H0z"/></svg>';
 
   /* ---------------- Masuk ---------------- */
+  /* Slideshow: daftar gambar dari Pengaturan → Halaman Masuk (snapshot publik). Kosong = ilustrasi bawaan. */
+  var SLIDE_BAWAAN = ['assets/ilustrasi/masuk-1.svg', 'assets/ilustrasi/masuk-2.svg', 'assets/ilustrasi/masuk-3.svg', 'assets/ilustrasi/masuk-4.svg'];
+  function cfgMasuk() {
+    var l = App.publik.login || {}, b = Inti.LOGIN_BAWAAN;
+    var slides = (l.slides || []).filter(function (u) { return /^(https:\/\/|assets\/|data:image\/)/.test(String(u)); });
+    return { slides: slides.length ? slides : SLIDE_BAWAAN, kustom: !!slides.length, headline: l.headline || b.headline, subjudul: l.subjudul != null ? l.subjudul : b.subjudul, durasi: Math.min(15000, Math.max(3000, Number(l.durasi) || b.durasi)) };
+  }
+  W.cfgMasuk = cfgMasuk;
+  /* HTML panel visual (dipakai juga untuk pratinjau di Pengaturan) */
+  W.heroMasuk = function (c, P) {
+    return '<section class="masuk-hero" style="--durasi:' + c.durasi + 'ms" aria-label="Galeri ' + e(P.nama_app) + '">' +
+      '<div class="slide-wadah">' + c.slides.map(function (u, i) { return '<figure class="slide' + (i ? '' : ' aktif') + '" data-i="' + i + '"><img src="' + e(u) + '" alt="" decoding="async"' + (i ? '' : ' fetchpriority="high"') + '></figure>'; }).join('') + '</div>' +
+      '<div class="hero-lapis" aria-hidden="true"></div>' +
+      '<div class="hero-isi">' +
+        '<div class="hero-merek"><span class="hero-logo"><img data-logo src="' + e(MR.logo) + '" alt=""></span><span class="tumpuk"><b data-nama-app>' + e(P.nama_app) + '</b><small data-tagline>' + e(P.tagline || '') + '</small></span></div>' +
+        '<div class="hero-kutip"><span class="garis-emas" aria-hidden="true"></span><h1 data-login-judul>' + e(c.headline) + '</h1>' + (c.subjudul ? '<p data-login-sub>' + e(c.subjudul) + '</p>' : '') +
+          (c.slides.length > 1 ? '<div class="slide-titik" role="group" aria-label="Pilih gambar">' + c.slides.map(function (u, i) { return '<button type="button" class="' + (i ? '' : 'aktif') + '" data-slide="' + i + '" aria-label="Gambar ' + (i + 1) + ' dari ' + c.slides.length + '"><i></i></button>'; }).join('') + '</div>' : '') +
+        '</div></div></section>';
+  };
+  /* Mesin slideshow: crossfade 1000 ms + Ken Burns (CSS); berhenti sendiri saat halaman ditinggalkan */
+  W.jalankanSlide = function (hero, hidup) {
+    if (!hero) return;
+    var sl = MR.qsa('.slide', hero), dots = MR.qsa('.slide-titik button', hero), n = sl.length, i = 0, t = null;
+    var dur = parseInt(hero.style.getPropertyValue('--durasi'), 10) || 5000;
+    sl.forEach(function (f, k) { var img = f.querySelector('img'); img.addEventListener('error', function () { if (img.dataset.cadangan) return; img.dataset.cadangan = '1'; img.src = SLIDE_BAWAAN[k % SLIDE_BAWAAN.length]; }); });
+    if (n < 2) return;
+    function ke(j) {
+      var lama = sl[i]; lama.classList.remove('aktif'); lama.classList.add('keluar'); setTimeout(function () { lama.classList.remove('keluar'); }, 1100);
+      if (dots[i]) dots[i].classList.remove('aktif');
+      i = (j + n) % n;
+      void sl[i].offsetWidth; sl[i].classList.add('aktif');
+      if (dots[i]) { void dots[i].offsetWidth; dots[i].classList.add('aktif'); }
+      jadwal();
+    }
+    function jadwal() {
+      clearTimeout(t);
+      t = setTimeout(function () { if (!hidup() || !D.body.contains(hero)) return; if (D.hidden) { jadwal(); return; } ke(i + 1); }, dur);
+    }
+    dots.forEach(function (b) { b.addEventListener('click', function () { var j = Number(b.dataset.slide); if (j !== i) ke(j); }); });
+    hero.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowRight') ke(i + 1); if (ev.key === 'ArrowLeft') ke(i - 1); });
+    jadwal();
+  };
+
   R.daftar('masuk', {
     judul: 'Masuk', publik: true,
     render: function (ctx) {
-      var st = ctx.st, mode = st.mode || (ctx.q.ortu ? 'ortu' : 'staf'), demo = API.mode === 'demo', P = App.publik;
-      ctx.el.innerHTML = '<div class="masuk-wadah">' +
-        '<section class="masuk-hero">' + OMBAK +
-          '<div class="baris" style="gap:12px"><span class="sb-logo" style="width:46px;height:46px;border-radius:14px"><img data-logo src="' + e(MR.logo) + '" alt="" style="width:36px;height:36px"></span><div class="tumpuk"><b style="font:800 18px var(--f-judul);color:#fff" data-nama-app>' + e(P.nama_app) + '</b><small style="color:#7DD3FC;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:11px">Dashboard Terintegrasi</small></div></div>' +
-          '<h1>Latihan tertib, absensi jujur, keuangan rapi — dalam satu kolam data.</h1>' +
-          '<p data-tagline>' + e(P.tagline || '') + '</p>' +
-          '<div class="fitur">' +
-            '<div><span class="ubin">' + ik('jam') + '</span><span><b>Batas absensi dari jam server</b><small>Jam di HP pelatih tidak berpengaruh. Pukul 22:00:01 WIB otomatis terkunci.</small></span></div>' +
-            '<div><span class="ubin">' + ik('renang') + '</span><span><b>Portal orang tua real-time</b><small>Sisa sesi, jadwal, dan riwayat kehadiran anak dari HP masing-masing.</small></span></div>' +
-            '<div><span class="ubin">' + ik('tameng') + '</span><span><b>Harga & rekening hanya di tangan Owner</b><small>Setiap perubahan penting tercatat di log audit.</small></span></div>' +
-          '</div></section>' +
-        '<section class="masuk-panel"><div class="masuk-kartu masuk">' +
-          '<h2>Masuk ke akun Anda</h2><p class="sub">Pilih jenis akun, lalu masukkan data akses.</p>' +
+      var st = ctx.st, mode = st.mode || (ctx.q.ortu ? 'ortu' : 'staf'), demo = API.mode === 'demo', P = App.publik, c = cfgMasuk();
+      ctx.el.innerHTML = '<div class="masuk-wadah">' + W.heroMasuk(c, P) +
+        '<section class="masuk-panel"><div class="masuk-kartu">' +
+          '<div class="masuk-salam"><h2>Selamat datang kembali</h2><p class="sub">Masuk untuk melanjutkan ke ' + e(P.nama_app) + '.</p></div>' +
           '<div class="mt16">' + UI2.seg('mode', [{ v: 'staf', label: 'Staf & Pelatih', ikon: 'orang' }, { v: 'ortu', label: 'Orang Tua', ikon: 'renang' }], mode, 'lebar') + '</div>' +
           '<form class="form mt16" id="f-masuk" autocomplete="on" novalidate>' + formMasuk(mode) + '</form>' +
-          (demo ? '<div class="pemisah">atau coba akun demo</div><div class="demo-akun">' + App.AKUN_DEMO.map(function (a, i) { return '<button type="button" data-a="demo" data-i="' + i + '"><span class="ubin" style="width:34px;height:34px;border-radius:10px">' + ik(a.ikon, 'k') + '</span><span class="tumpuk"><span>' + e(a.label) + '</span><small>' + e(a.sub.split(' · ')[0]) + '</small></span></button>'; }).join('') + '</div>' +
+          (demo ? '<div class="pemisah">atau coba akun demo</div><div class="demo-akun">' + App.AKUN_DEMO.map(function (a, i) { return '<button type="button" data-a="demo" data-i="' + i + '"><span class="ubin" style="width:34px;height:34px;border-radius:10px">' + ik(a.ikon, 'k') + '</span><span class="tumpuk"><span>' + e(a.label) + '</span><small>' + e(a.sub) + '</small></span></button>'; }).join('') + '</div>' +
             '<p class="kecil redup tengah mt12">Sandi staf demo: <b>demo1234</b> · Orang tua: kode <b>SA-8829</b>, PIN <b>123456</b></p>' : '') +
-          '<div class="baris ujung bungkus mt16 kecil"><a href="#/daftar/DEMO-BARU">' + ik('formulir', 'k') + ' Contoh formulir pendaftaran</a><a href="#/v">' + ik('qr', 'k') + ' Verifikasi dokumen</a></div>' +
-        '</div></section></div>';
+          (demo ? '<div class="baris tengah mt16 kecil"><a href="#/daftar/DEMO-BARU">' + ik('formulir', 'k') + ' Lihat contoh formulir pendaftaran</a></div>' : '') +
+        '</div><p class="masuk-kaki">© ' + new Date().getFullYear() + ' ' + e(P.nama_app) + (P.kontak_admin ? ' · <a target="_blank" rel="noopener" href="' + e(UI2.waLink(P.kontak_admin, 'Halo Admin, saya butuh bantuan masuk ke ' + P.nama_app + '.')) + '">Butuh bantuan?</a>' : '') + '</p></section></div>';
       ctx.on('seg', '.seg', function (s, ev) { st.mode = ev.detail.v; var f = ctx.el.querySelector('#f-masuk'); f.innerHTML = formMasuk(st.mode); f.classList.remove('pudar'); void f.offsetWidth; f.classList.add('pudar'); pasangPin(f); });
       ctx.on('submit', '#f-masuk', function (f, ev) { ev.preventDefault(); kirim(f, ctx.el.querySelector('#f-masuk [type=submit]')); });
       ctx.on('click', '[data-mata]', function (b) { var i = b.parentNode.querySelector('input'); i.type = i.type === 'password' ? 'text' : 'password'; b.innerHTML = ik(i.type === 'password' ? 'mata' : 'mataTutup'); });
       ctx.aksi({ demo: function (b) { App.masukDemo(App.AKUN_DEMO[b.dataset.i], b); } });
-      ctx.nanti(function () { UI2.hidupkan(ctx.el); pasangPin(ctx.el.querySelector('#f-masuk')); });
+      ctx.nanti(function () {
+        UI2.hidupkan(ctx.el); pasangPin(ctx.el.querySelector('#f-masuk'));
+        W.jalankanSlide(ctx.el.querySelector('.masuk-hero'), function () { return !ctx.basi(); });
+        /* mode live: cek pengaturan terbaru dari backend di latar (bila sinkron GitHub belum selesai) */
+        if (API.mode === 'live') API.panggil('pub.config', {}, { diam: true }).then(function (p) {
+          if (ctx.basi() || !p || Number(p.versi) <= Number(App.publik.versi || 0)) return;
+          App.terapkanPublik(p); R.tampilkan({ diam: true });
+        }).catch(function () { });
+      });
       function kirim(f, tombol) {
         var v = UI2.baca(f), ortu = (st.mode || mode) === 'ortu';
         if (ortu) v.pin = MR.qsa('.pin-kotak input', f).map(function (x) { return x.value; }).join('');
@@ -44,10 +85,10 @@
   function formMasuk(mode) {
     if (mode === 'ortu') return UI2.fld({ k: 'kode', label: 'Kode akses anak', ph: 'Contoh: SA-8829', ikon: 'kunci', wajib: true, attr: ' autocapitalize="characters" autocomplete="username"', bantu: 'Kode dikirim Admin lewat WhatsApp setelah pendaftaran diverifikasi.' }) +
       '<div class="fld" data-k="pin"><label>PIN 6 angka <span class="wajib">*</span></label><div class="pin-kotak">' + [0, 1, 2, 3, 4, 5].map(function (i) { return '<input inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit PIN ' + (i + 1) + '" autocomplete="off">'; }).join('') + '</div><span class="galat"></span></div>' +
-      '<button type="submit" class="btn primer besar lebar">' + ik('panah') + 'Masuk ke Portal Orang Tua</button>';
+      '<button type="submit" class="btn primer besar lebar kilau">' + ik('panah') + 'Masuk ke Portal Orang Tua</button>';
     return UI2.fld({ k: 'username', label: 'Username', ph: 'mis. admin', ikon: 'orang', wajib: true, attr: ' autocomplete="username" autocapitalize="off"' }) +
       UI2.fld({ k: 'sandi', label: 'Sandi', tipe: 'password', ikon: 'kunci', wajib: true, attr: ' autocomplete="current-password"', ujung: '<button type="button" class="btn ikon hantu kecil ujung" data-mata aria-label="Tampilkan sandi">' + ik('mata') + '</button>' }) +
-      '<button type="submit" class="btn primer besar lebar">Masuk</button>';
+      '<button type="submit" class="btn primer besar lebar kilau">Masuk</button>';
   }
   /* Kotak PIN: pindah otomatis, tempel 6 digit sekaligus, Backspace kembali */
   function pasangPin(root) {
@@ -201,40 +242,4 @@
     W.scrollTo(0, 0);
   }
 
-  /* ---------------- Verifikasi dokumen (QR) ---------------- */
-  R.daftar('v', {
-    judul: 'Verifikasi Dokumen', publik: true,
-    render: function (ctx) {
-      var kode = (ctx.arg[0] || '').toUpperCase(), kepala = '<div class="publik-atas"><span class="sb-logo" style="width:36px;height:36px"><img src="' + e(MR.logo) + '" alt=""></span><div class="tumpuk tumbuh"><b style="font:700 15px var(--f-judul)">' + e(App.publik.nama_app) + '</b><small class="redup">Verifikasi keaslian dokumen</small></div><a class="btn kecil" href="#/masuk">Masuk</a></div>';
-      var formKode = '<form id="f-v" class="form mt16"><div class="fld"><label>Kode verifikasi</label><div class="baris"><input class="inp" name="kode" placeholder="14 karakter, mis. 7KQ2…" value="' + e(kode) + '" autocapitalize="characters"><button class="btn primer" type="submit">Periksa</button></div></div></form>';
-      if (!kode) {
-        ctx.el.innerHTML = kepala + '<div class="publik-isi" style="max-width:560px"><div class="kartu pad masuk mt24"><div class="baris"><span class="ubin">' + ik('qr') + '</span><div class="tumpuk"><h2>Cek keaslian dokumen</h2><span class="kecil redup">Pindai QR pada kwitansi/slip/sertifikat, atau ketik kodenya.</span></div></div>' + formKode + '</div></div>';
-        pasangForm(); return;
-      }
-      return API.panggil('pub.verifikasi', { kode: kode }).then(function (r) {
-        if (ctx.basi()) return;
-        var sah = r.ditemukan && r.status === 'SAH';
-        ctx.el.innerHTML = kepala + '<div class="publik-isi" style="max-width:640px"><div class="kartu pad masuk mt24 tengah">' +
-          '<div class="verif-cap ' + (sah ? 'sah' : 'tidak') + '">' + ik(sah ? 'cekBulat' : 'xBulat') + '</div>' +
-          '<h2 class="mt16">' + (!r.ditemukan ? 'Dokumen tidak ditemukan' : sah ? 'Dokumen SAH' : r.status === 'DITARIK' ? 'Dokumen telah DITARIK' : 'Dokumen belum terbit') + '</h2>' +
-          '<p class="redup mt8">' + (!r.ditemukan ? 'Kode ' + e(kode) + ' tidak terdaftar. Pastikan kode diketik dengan benar.' : sah ? 'Diterbitkan secara resmi oleh ' + e(r.instansi) + '.' : e(r.alasan_tarik || 'Dokumen ini tidak berlaku.')) + '</p></div>' +
-          (r.ditemukan ? '<div class="kartu pad masuk-2 mt16"><div class="grid g2">' + [['Jenis dokumen', r.jenis], ['Nomor', r.nomor || '-'], ['Tanggal terbit', r.terbit ? F.waktu(r.terbit) + ' WIB' : '-'], ['Instansi', r.instansi]].map(function (x) { return '<div><div class="kecil redup">' + x[0] + '</div><b>' + e(x[1]) + '</b></div>'; }).join('') + '</div>' +
-            (r.ringkas ? '<hr class="garis"><div class="kecil redup">Ringkasan</div><b>' + e(r.ringkas) + '</b>' : '') +
-            (r.penandatangan.length ? '<hr class="garis"><div class="kecil redup">Ditandatangani</div>' + r.penandatangan.map(function (p) { return '<div class="baris mt8">' + UI2.avatar(p.nama, 'kecil') + '<div class="tumpuk"><b class="kecil">' + e(p.nama) + ' · ' + e(p.jabatan) + '</b><span class="kecil redup">' + e(p.metode) + ' · ' + e(F.waktu(p.waktu)) + '</span></div></div>'; }).join('') : '') +
-            (r.hash_pdf ? '<hr class="garis"><div class="kecil redup">Sidik jari PDF (SHA-256)</div><code class="kecil putus">' + e(r.hash_pdf) + '</code><label class="btn kecil mt8">' + ik('unggah', 'k') + 'Cocokkan berkas PDF<input type="file" accept="application/pdf" hidden id="cek-pdf"></label><div id="hasil-pdf" class="mt8"></div>' : '') +
-          '</div>' : '') +
-          '<div class="kartu pad mt16 masuk-3"><b class="kecil">Periksa kode lain</b>' + formKode + '</div></div>';
-        pasangForm();
-        var cek = ctx.el.querySelector('#cek-pdf');
-        if (cek) cek.addEventListener('change', function () {
-          var f = cek.files[0]; if (!f || !W.crypto || !crypto.subtle) return;
-          f.arrayBuffer().then(function (buf) { return crypto.subtle.digest('SHA-256', buf); }).then(function (h) {
-            var hex = Array.prototype.map.call(new Uint8Array(h), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''), sama = hex === String(r.hash_pdf).toLowerCase();
-            ctx.el.querySelector('#hasil-pdf').innerHTML = '<div class="peringatan ' + (sama ? 'ok' : 'bahaya') + '">' + ik(sama ? 'cekBulat' : 'segitiga') + '<div><b>' + (sama ? 'Berkas identik dengan dokumen resmi' : 'Berkas BERBEDA dari dokumen resmi') + '</b>' + (sama ? 'Isi PDF tidak diubah sejak diterbitkan.' : 'PDF ini mungkin telah diubah. Hubungi penerbit.') + '</div></div>';
-          });
-        });
-      });
-      function pasangForm() { var f = ctx.el.querySelector('#f-v'); if (f) f.addEventListener('submit', function (ev) { ev.preventDefault(); var k = f.kode.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (k) location.hash = '#/v/' + k; }); }
-    }
-  });
 })(window, document);

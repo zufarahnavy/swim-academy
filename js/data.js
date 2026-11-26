@@ -3,7 +3,7 @@
  * Kontrak modul-responsif: baca dari cache seketika (SWR), segarkan di latar
  * tanpa bilah progres, render ulang diam bila data berubah; tulis membuang
  * cache. Ditambah pola gas-scale-turbo: dedupe permintaan identik, epoch tulis,
- * prefetch saat idle, antrean notifikasi diproses setelah respons (drain).
+ * prefetch saat idle.
  * ===================================================================== */
 (function (W) {
   'use strict';
@@ -34,7 +34,7 @@
   }
   function simpanDemo(segera) {
     clearTimeout(tSimpan);
-    var tulis = function () { try { var r = {}, b = {}, uk = 0; if (demoEnv.rahasiaDemo.FONNTE_TOKEN) r.FONNTE_TOKEN = demoEnv.rahasiaDemo.FONNTE_TOKEN; Object.keys(demoEnv.berkas).reverse().forEach(function (k) { var u = demoEnv.berkas[k].url.length; if (uk + u < 1500000) { b[k] = demoEnv.berkas[k]; uk += u; } }); localStorage.setItem(K_DEMO, JSON.stringify({ versi: Inti.VERSI, tanggal: Inti.util.tglWIB(Date.now()), t: demoEnv.db.t, r: r, b: b })); demoEnv.db.berubah = false; } catch (e) { } };
+    var tulis = function () { try { var r = {}, b = {}, uk = 0; Object.keys(demoEnv.berkas).reverse().forEach(function (k) { var u = demoEnv.berkas[k].url.length; if (uk + u < 1500000) { b[k] = demoEnv.berkas[k]; uk += u; } }); localStorage.setItem(K_DEMO, JSON.stringify({ versi: Inti.VERSI, tanggal: Inti.util.tglWIB(Date.now()), t: demoEnv.db.t, r: r, b: b })); demoEnv.db.berubah = false; } catch (e) { } };
     if (segera) tulis(); else tSimpan = setTimeout(tulis, 300);
   }
   function lewatDemo(action, payload, tulis) {
@@ -61,7 +61,7 @@
   }
 
   /* ---------- Satu-satunya pintu ---------- */
-  var BACA = /^(auth\.saya|pub\.|dash\.|analitik\.|daftar\.(link|masuk)List|siswa\.(list|detail)|jadwal\.list|absensi\.(hari|riwayat|bukaKunciList)|materi\.list|kas\.list|honor\.|tutup\.list|atur\.ambil|owner\.harga$|hak\.ambil|akun\.list|log\.|notif\.(config|queue)|wa\.(blastList|device)|crm\.detail|dok\.(ambil|detail)|berkas\.)/;
+  var BACA = /^(auth\.saya|pub\.|dash\.|analitik\.|daftar\.(link|masuk)List|siswa\.(list|detail)|jadwal\.list|absensi\.(hari|riwayat|bukaKunciList)|materi\.list|kas\.list|honor\.|tutup\.list|atur\.ambil|owner\.harga$|hak\.ambil|akun\.list|log\.|berkas\.)/;
   function panggil(action, payload, o) {
     o = o || {}; if (!o.diam && W.MR) MR.Muat.mulai();
     var tulis = !BACA.test(action), p = MODE === 'demo' ? lewatDemo(action, payload, tulis) : lewatLive(action, payload, !tulis);
@@ -72,15 +72,10 @@
       return res.data;
     }, function (er) { if (!o.diam && W.MR) MR.Muat.selesai(); throw er; });
   }
-  var tIzin = null, tDrain = null, drainKe = 0;
+  var tIzin = null;
   function amati(res, action) {
     if (res.error && res.error.code === 'AUTH' && Sesi.token && action !== 'auth.masuk') { Sesi.hapus(); if (W.App) App.keluar('Sesi Anda berakhir. Silakan masuk kembali.'); return; }
     if (res.hv != null && Sesi.me && res.hv !== Sesi.hakVersi) { clearTimeout(tIzin); tIzin = setTimeout(API.segarkanIzin, 50); }
-    if (res.nq > 0) jadwalkanDrain();
-  }
-  function jadwalkanDrain() {
-    clearTimeout(tDrain); drainKe = 0;
-    tDrain = setTimeout(function jalan() { panggil('notif.drain', {}, { diam: true }).then(function (r) { if (r && r.sisa && ++drainKe < 3) tDrain = setTimeout(jalan, 1500); }).catch(function () { }); }, 400);
   }
 
   /* ---------- Cache SWR + dedupe + epoch ---------- */

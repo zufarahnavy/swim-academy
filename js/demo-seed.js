@@ -1,18 +1,12 @@
 /* =====================================================================
  * DATA DEMO — dibangkitkan relatif terhadap hari ini (WIB) agar dashboard
  * selalu hidup: sesi hari ini, paket HABIS, sisa 1 sesi, riwayat 5 bulan,
- * kas, honor, pendaftaran masuk, dokumen. Semua nama fiktif.
+ * kas, honor, dan pendaftaran masuk. Semua nama fiktif.
  * Akun demo: owner / admin / budi / meilin / hendra / doni / rina / sari
  * (sandi: demo1234). Orang tua: kode SA-8829 · PIN 123456.
  * ===================================================================== */
 (function (root) {
   'use strict';
-  var TEKS_TEMPLATE = {
-    KWITANSI: { engine: 'docs', teks: '{{INSTITUSI_NAMA}} {{INSTITUSI_ALAMAT}} KWITANSI {{NOMOR}} {{TANGGAL}} Telah terima dari {{NAMA_PEMBAYAR}} uang sejumlah {{NOMINAL|rupiah}} ({{NOMINAL|terbilang:rupiah}}) untuk {{PERUNTUKAN}} Peserta {{PESERTA}} Paket {{PAKET}} ({{KATEGORI}}) Metode {{METODE}} Tanggal bayar {{TANGGAL_BAYAR|tanggal}} {{NAMA_PEJABAT_1}} {{JABATAN_1}} {{TTD_1}} {{QR}} {{KODE_VERIFIKASI}}' },
-    SLIP_HONOR: { engine: 'docs', teks: '{{INSTITUSI_NAMA}} SLIP HONOR {{NOMOR}} {{NAMA_PELATIH}} {{LISENSI}} Periode {{PERIODE}} {{#RINCIAN}} {{RINCIAN.KATEGORI}} {{RINCIAN.SESI}} {{RINCIAN.TARIF|rupiah}} {{RINCIAN.SUBTOTAL|rupiah}} {{/RINCIAN}} Total sesi {{TOTAL_SESI}} Total {{TOTAL|rupiah}} {{NAMA_PEJABAT_1}} {{TTD_1}} {{QR}}' },
-    LAPORAN_KAS: { engine: 'sheets', teks: '{{INSTITUSI_NAMA}} LAPORAN KAS {{PERIODE}} {{NOMOR}} Saldo awal {{SALDO_AWAL|rupiah}} {{#TRX}} {{TRX.TANGGAL|tanggal}} {{TRX.KATEGORI}} {{TRX.URAIAN}} {{TRX.MASUK}} {{TRX.KELUAR}} {{/TRX}} Masuk {{MASUK|rupiah}} Keluar {{KELUAR|rupiah}} Saldo akhir {{SALDO_AKHIR|rupiah}} {{NAMA_PEJABAT_1}} {{QR}}' },
-    SERTIFIKAT: { engine: 'slides', teks: 'SERTIFIKAT {{NOMOR}} diberikan kepada {{NAMA_SISWA|kapital}} {{PREDIKAT}} {{PAKET}} {{KATEGORI}} {{JUMLAH_HADIR}} sesi bersama {{PELATIH}} di {{KOLAM}} {{PERIODE}} {{TANGGAL}} {{NAMA_PEJABAT_1}} {{JABATAN_1}} {{QR}}' }
-  };
   function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
   function seed(Inti, env) {
@@ -25,9 +19,8 @@
     function tambahMenit(j, m) { var x = U.menitDari(j) + m; return ('0' + Math.floor(x / 60)).slice(-2) + ':' + ('0' + x % 60).slice(-2); }
 
     Inti.setupAwal(env, {
-      owner: { nama: 'Hendro Wijaya', username: 'owner', sandi: 'demo1234', email: 'owner@swimacademy.id' },
-      identitas: { nama_app: 'Swim Academy', tagline: 'Sistem Terpadu Pelatihan & Absensi Renang', kontak_admin: '081234567890', email_owner: 'owner@swimacademy.id', alamat: 'Jl. Tirta Raya No. 12, Jakarta Selatan', logo: '', favicon: '' },
-      template: Object.keys(TEKS_TEMPLATE).reduce(function (o, k) { o[k] = { file_id: 'demo-' + k.toLowerCase(), engine: TEKS_TEMPLATE[k].engine, teks: TEKS_TEMPLATE[k].teks }; return o; }, {})
+      owner: { nama: 'Hendro Wijaya', username: 'owner', sandi: 'demo1234' },
+      identitas: { nama_app: 'Swim Academy', tagline: 'Sistem Terpadu Pelatihan & Absensi Renang', kontak_admin: '081234567890', email_owner: '', alamat: 'Jl. Tirta Raya No. 12, Jakarta Selatan', logo: '', favicon: '' }
     });
     var pengaturanAwal = new Date(now - 160 * 864e5), mulaiHarga = U.tglWIB(pengaturanAwal.getTime());
     T('Config_Terkunci', [{ key: 'bank', value: 'Bank Central Asia (BCA)', updated_by: 'USR-OWNER', updated_at: waktu(mulaiHarga) }, { key: 'no_rekening', value: '5240881920', updated_by: 'USR-OWNER', updated_at: waktu(mulaiHarga) }, { key: 'atas_nama', value: 'PT Tirta Renang Indonesia', updated_by: 'USR-OWNER', updated_at: waktu(mulaiHarga) }]);
@@ -47,7 +40,7 @@
     function tarifUntuk(kat, coach) { return kat === 'Privat' && coach === 'CO-01' ? 105000 : TARIF[kat]; }
 
     function akun(uid, nama, peran, un, sandi, extra) { var salt = env.acak(16); return Object.assign({ user_id: uid, nama: nama, peran: peran, username: un, hash_sandi: Inti.hashRahasia(env, sandi, salt), salt: salt, versi_token: 1, gagal_login: 0, kunci_hingga: '', coach_id: '', siswa_ids: '', kontak: '', email: '', aktif: 'Y', login_terakhir: '', dibuat_at: waktu(mulaiHarga) }, extra || {}); }
-    T('Pengguna', [akun('USR-ADMIN', 'Dina Pratiwi', 'admin', 'admin', 'demo1234', { kontak: '081234567890', email: 'admin@swimacademy.id' })]
+    T('Pengguna', [akun('USR-ADMIN', 'Dina Pratiwi', 'admin', 'admin', 'demo1234', { kontak: '081234567890', email: 'admin@example.com' })]
       .concat([['CO-01', 'budi'], ['CO-02', 'meilin'], ['CO-03', 'hendra'], ['CO-04', 'doni'], ['CO-05', 'rina'], ['CO-06', 'sari']].map(function (x, i) { var nm = ['Budi Santoso', 'Mei Lin', 'Hendra Kusuma', 'Doni Ramadhan', 'Rina Wijaya', 'Sari Puspita'][i]; return akun('USR-' + x[1].toUpperCase(), nm, 'pelatih', x[1], 'demo1234', { coach_id: x[0], kontak: '08131111000' + (i + 1) }); })));
 
     /* Jalur siswa: peserta, ortu, paket, pelatih, kolam, hari (relatif ke hari ini), jam, riwayat paket, sesi terpakai paket berjalan */
@@ -193,22 +186,13 @@
       ['Teknik Pembalikan (Flip Turn)', 'Lanjutan', 'Video', 'flip turn, lanjutan', 'Satu kayuhan terakhir, tarik dagu, salto setengah, dorong dinding dalam posisi streamline menyamping.']
     ].map(function (m, i) { return { materi_id: 'MT-' + (11 + i), judul: m[0], kategori: m[1], jenis: m[2], link: m[2] === 'Video' ? 'https://www.youtube.com/results?search_query=' + encodeURIComponent(m[0]) : '', drive_id: '', tag: m[3], deskripsi: m[4], aktif: 'Y', dibuat_at: waktu(U.geserTgl(hariIni, -i * 6 - 2)) }; }));
     T('Buka_Kunci', [{ id: 'BK-1001', coach_id: 'CO-03', tanggal: U.geserTgl(hariIni, -1), alasan: 'Sinyal area kolam Cilandak drop saat jam kelas', dibuat_oleh: 'USR-ADMIN', dibuat_at: waktu(U.geserTgl(hariIni, -1), '21:55'), berlaku_hingga: waktu(hariIni, '21:55') }]);
-    db.tambah('DE_Pejabat', [{ user_id: 'USR-OWNER', nama: 'Hendro Wijaya', jabatan: 'Owner & Head Coach', pin_hash: Inti.hashRahasia(env, '123456', 'pejabat-demo'), pin_salt: 'pejabat-demo', aktif: 'Y' }]);
 
-    /* Beberapa aksi lewat jalur resmi (menghasilkan log audit & dokumen ber-QR) */
-    var masukOwner = Inti.jalankan(env, { action: 'auth.masuk', payload: { username: 'owner', sandi: 'demo1234' } }), tok = masukOwner.data && masukOwner.data.token;
+    /* Login lewat jalur resmi agar log audit & 'login terakhir' terisi */
+    Inti.jalankan(env, { action: 'auth.masuk', payload: { username: 'owner', sandi: 'demo1234' } });
     Inti.jalankan(env, { action: 'auth.masuk', payload: { username: 'admin', sandi: 'demo1234' } });
-    var masuk = trxRows.filter(function (t) { return t.tipe === 'Pemasukan' && t.status === 'aktif'; }).slice(-4);
-    masuk.forEach(function (t) { Inti.jalankan(env, { action: 'dok.buat', token: tok, payload: { jenis: 'KWITANSI', ref: { trx_id: t.trx_id } } }); });
-    var blnLalu = U.geserBulan(U.bulanDari(hariIni), -1);
-    var slip = Inti.jalankan(env, { action: 'dok.buat', token: tok, payload: { jenis: 'SLIP_HONOR', refs: [{ coach_id: 'CO-01', bulan: blnLalu }, { coach_id: 'CO-02', bulan: blnLalu }] } });
-    if (slip.ok && slip.data.dokumen[0]) Inti.jalankan(env, { action: 'dok.setujui', token: tok, payload: { ids: [slip.data.dokumen[0].id], pin: '123456' } });
-    var tamat = enrRows.filter(function (e) { return e.status === 'Selesai' && e.sesi_terpakai >= e.sesi_total; }).slice(-1)[0];
-    if (tamat) Inti.jalankan(env, { action: 'dok.buat', token: tok, payload: { jenis: 'SERTIFIKAT', ref: { enr_id: tamat.enr_id } } });
-    Inti.jalankan(env, { action: 'crm.sync', token: tok, payload: {} });
     if (db.v) { db.v = {}; db.berubah = false; }
     return { siswa: siswaRows.length, paket: enrRows.length, absensi: absRows.length, transaksi: trxRows.length };
   }
-  var api = { seed: seed, TEKS_TEMPLATE: TEKS_TEMPLATE };
+  var api = { seed: seed };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.DemoSeed = api;
 })(typeof window !== 'undefined' ? window : globalThis);

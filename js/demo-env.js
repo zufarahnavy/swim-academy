@@ -64,20 +64,14 @@
       sha256: sha256, hmac: function (teks) { return sha256('hmac|' + rahasia.PEPPER + '|' + teks).slice(0, 43); },
       acak: acak, kunci: function (fn) { return fn(); },
       rahasia: function (k) { return rahasia[k] || ''; },
-      setRahasia: function (k, v) { if (['FONNTE_TOKEN'].indexOf(k) < 0) throw new Error('Kunci rahasia tidak diizinkan'); if (v) rahasia[k] = v; else delete rahasia[k]; },
       cacheGet: function (k) { var c = cache[k]; if (!c || c.x < Date.now()) return null; return c.v; },
       cachePut: function (k, v, ttl) { cache[k] = { v: v, x: Date.now() + (ttl || 600) * 1000 }; },
       versiTabel: function (list) { return list.map(function (t) { return db.v[t] || 0; }).join('.'); },
       simpanBerkas: function (f) { var id = 'demo-' + acak(10); berkas[id] = { nama: f.nama, mime: f.mime, url: 'data:' + f.mime + ';base64,' + f.base64 }; return { id: id, url: berkas[id].url }; },
       urlBerkas: function (id) { return berkas[id] ? berkas[id].url : (/^assets\//.test(id) ? id : ''); },
       dispatchGitHub: function () { return { ok: true, langsung: true }; },
-      waKirim: function (list) { return list.map(function (m) { return /^628\d{8,12}$/.test(m.target) ? { ok: true, respon: 'DEMO terkirim' } : { ok: false, respon: 'Nomor tidak valid' }; }); },
-      waValidasi: function (nomor) { return { ok: true, terdaftar: nomor.filter(function (n) { return Number(n.slice(-1)) % 5 !== 0; }), tidak: nomor.filter(function (n) { return Number(n.slice(-1)) % 5 === 0; }) }; },
-      waDevice: function () { return { ok: true, device: '6281200000000', device_status: 'connect', package: 'DEMO', quota: '1000', expired: '-' }; },
-      emailKirim: function () { return { ok: true, respon: 'DEMO terkirim' }; },
-      emailKuota: function () { return 100; },
-      htmlKePdf: null,
-      renderDokumen: function () { return { berkas: { demo: true }, hash: '' }; }
+      emailKirim: function () { return { ok: true, respon: 'DEMO: email tidak benar-benar dikirim' }; },
+      htmlKePdf: null
     };
     return env;
   }

@@ -1,6 +1,6 @@
 # Panduan Instalasi — Swim Academy: Dashboard Terintegrasi
 
-Versi aplikasi 1.0.0 · mengikuti PRD v1.1 (26 Nov 2026)
+Versi aplikasi 1.1.0 · mengikuti PRD v1.1 (26 Nov 2026)
 
 Aplikasi terdiri dari dua bagian:
 
@@ -25,7 +25,6 @@ Akun demo:
 | Admin | `admin` / `demo1234` |
 | Pelatih | `budi`, `meilin`, `hendra`, `doni`, `rina`, `sari` / `demo1234` |
 | Orang tua | kode akses `SA-8829` + PIN `123456` (2 anak: Kenzo & Aisyah) |
-| PIN tanda tangan dokumen (Owner) | `123456` |
 | Formulir pendaftaran contoh | `#/daftar/DEMO-BARU` |
 
 Data demo tersimpan di browser dan **dibuat ulang setiap hari** supaya tanggal jadwal & absensi selalu relevan. Tombol **Reset data** di pita atas mengembalikannya kapan saja.
@@ -44,19 +43,16 @@ Data demo tersimpan di browser dan **dibuat ulang setiap hari** supaya tanggal j
    | --- | --- |
    | `Kode.gs` (ganti isi `Code.gs`, lalu ganti namanya) | `apps-script/Kode.gs` |
    | `Inti.gs` | `apps-script/Inti.gs` |
-   | `Notifikasi.gs` | `apps-script/Notifikasi.gs` |
-   | `Dokumen.gs` | `apps-script/Dokumen.gs` |
-   | `QrLib.gs` | `apps-script/QrLib.gs` |
    | `DemoSeed.gs` | `apps-script/DemoSeed.gs` |
    | `appsscript.json` | `apps-script/appsscript.json` (ganti seluruh isinya) |
 
 4. Klik **Simpan** (ikon disket).
 5. Pilih fungsi **`setupAppEnvironment`** di bilah atas → **Jalankan** → izinkan akses (Google akan menampilkan peringatan "aplikasi belum diverifikasi" karena ini skrip milik Anda sendiri: klik **Lanjutan → Buka Swim Academy API**).
 6. Buka **Log eksekusi**. Catat **sandi Owner awal** yang hanya tampil sekali. Fungsi ini otomatis:
-   - membuat folder `SwimAcademy/{Logo, BuktiBayar, Materi, Dokumen, Template, Backup}` dan spreadsheet `Database — Swim Academy` berisi 35 sheet;
-   - memasang proteksi pada sheet terkunci (`Config_Terkunci`, `Harga_Paket`, `Tarif_Honor`, `Aturan_Bisnis`, `Hak_Akses`, `Log_Audit`, `Pengguna`, `DE_Pejabat`);
-   - mengisi matriks Hak Akses, Aturan Bisnis, kategori kas, form pendaftaran, dan template dokumen bawaan (Docs/Sheets/Slides);
-   - membuat rahasia di Script Properties dan memasang pemicu (antrean notifikasi 1 menit, tugas harian 00:10 WIB + backup 30 hari).
+   - membuat folder `SwimAcademy/{Logo, Logo/Masuk, BuktiBayar, Materi, Backup}` dan spreadsheet `Database — Swim Academy` berisi 26 sheet;
+   - memasang proteksi pada sheet terkunci (`Config_Terkunci`, `Harga_Paket`, `Tarif_Honor`, `Aturan_Bisnis`, `Hak_Akses`, `Log_Audit`, `Pengguna`);
+   - mengisi matriks Hak Akses, Aturan Bisnis, kategori kas, dan form pendaftaran;
+   - membuat rahasia di Script Properties dan memasang satu pemicu harian (00:10 WIB: paket kedaluwarsa + backup 30 hari).
 
    Aman dijalankan ulang: rahasia yang sudah ada **tidak ditimpa**, sheet/kolom hanya ditambah bila belum ada.
 
@@ -79,7 +75,6 @@ Rahasia hanya disimpan di **Setelan Proyek → Properti skrip**, tidak pernah di
 | `SPREADSHEET_ID`, `ROOT_FOLDER_ID` | otomatis | Lokasi database & folder Drive |
 | `GITHUB_TOKEN` | **Anda** | Token GitHub *fine-grained*, hanya repo ini, izin **Contents: Read and write** |
 | `GITHUB_REPO` | **Anda** | `username/nama-repo` |
-| `FONNTE_TOKEN` | lewat aplikasi | Diisi Owner di **CRM & WhatsApp → Konfigurasi** (opsional) |
 
 Jangan menambah editor proyek Apps Script sembarangan: setiap editor bisa melihat Script Properties.
 
@@ -114,17 +109,16 @@ Jangan menambah editor proyek Apps Script sembarangan: setiap editor bisa meliha
 5. **Settings → Secrets and variables → Actions → New repository secret**: nama `SYNC_SECRET`, isi dengan nilai `SYNC_SECRET` dari Script Properties.
 6. Buka tab **Actions**: workflow **Sinkron & Deploy** berjalan. Situs tayang di `https://USERNAME.github.io/NAMA-REPO/`.
 7. Di Apps Script, isi `GITHUB_TOKEN` dan `GITHUB_REPO` (lihat tabel di atas).
-8. Masuk ke aplikasi sebagai Owner. Buka **CRM & WhatsApp → Konfigurasi**, lalu isi **URL aplikasi** dengan alamat GitHub Pages. Alamat ini dipakai untuk link portal & QR verifikasi.
 
 Folder `apps-script/` ikut tersimpan di repository sebagai arsip, tetapi **tidak ikut dipublikasikan** ke Pages (workflow hanya menerbitkan berkas frontend).
 
 ### Cara kerja sinkronisasi pengaturan
 
-Saat Admin/Owner menyimpan identitas, tema, paket, atau form:
+Saat Admin/Owner menyimpan identitas, tema, halaman masuk, paket, atau form:
 
 1. Backend menyimpan ke sheet `Pengaturan` (versi naik) lalu memeriksa snapshot publik. Snapshot ditolak bila memuat kunci di luar whitelist, nomor rekening, atau nominal harga.
 2. Backend memanggil GitHub `repository_dispatch` (event `settings-updated`).
-3. Workflow mengambil `?action=publicSettings`, menggagalkan diri bila **nama kunci** memuat `rekening/harga/tarif/nominal/honor`, menulis `config/app-config.json` + logo/favicon, commit sebagai `github-actions[bot]`, deploy, lalu lapor balik (`sync.ack`).
+3. Workflow mengambil `?action=publicSettings`, menggagalkan diri bila **nama kunci** memuat `rekening/harga/tarif/nominal/honor`, menulis `config/app-config.json` + logo/favicon + foto slide halaman masuk (file Drive disalin ke `assets/brand/`), commit sebagai `github-actions[bot]`, deploy, lalu lapor balik (`sync.ack`).
 4. Status **Menunggu publikasi / Tersinkron / Gagal** tampil di **Pengaturan → Sinkronisasi**. Bila gagal, aplikasi tetap memakai pengaturan langsung dari backend, jadi tidak ada perubahan yang hilang.
 
 ---
@@ -133,22 +127,25 @@ Saat Admin/Owner menyimpan identitas, tema, paket, atau form:
 
 1. Masuk dengan `owner` dan sandi awal dari log → **Akun Saya → Ganti sandi**.
 2. **Harga, Tarif & Aturan**: isi rekening resmi, harga paket & biaya tambahan per peserta, tarif honor 7 kategori sesi, tarif khusus pelatih, dan Aturan Bisnis. Setiap simpan menampilkan ringkasan perubahan dan tercatat di Log Audit.
-3. **Dokumen → Atur PIN**: PIN 6 angka untuk menyetujui slip honor, laporan kas, dan sertifikat.
-4. **Pengaturan**: identitas, logo, tema (dengan uji kontras otomatis), kolam, pelatih, paket, form pendaftaran.
-5. **Akun Pengguna**: buat akun Admin dan Pelatih (sandi sementara tampil sekali).
-6. **Hak Akses**: sesuaikan izin peran bila perlu.
+3. **Pengaturan**: identitas (isi **Email Owner** bila ingin diberi tahu saat kunci absensi dibuka atau sinkron gagal berulang), logo, tema (dengan uji kontras otomatis), **halaman masuk**, kolam, pelatih, paket, form pendaftaran.
+4. **Akun Pengguna**: buat akun Admin dan Pelatih (sandi sementara tampil sekali).
+5. **Hak Akses**: sesuaikan izin peran bila perlu.
 
 ---
 
-## 4. WhatsApp otomatis (Fonnte) — opsional
+## 4. Mengganti foto halaman masuk (tanpa menyentuh kode)
 
-Bawaan aplikasi adalah **WA manual**: semua tombol WhatsApp membuka WhatsApp Admin (wa.me) dengan pesan siap kirim. Untuk pengiriman otomatis & blast:
+Admin/Owner: **Pengaturan → Halaman masuk**.
 
-1. Daftar di fonnte.com, hubungkan nomor WhatsApp, salin **token device**.
-2. Di aplikasi (Owner): **CRM & WhatsApp → Konfigurasi** → tempel token → nyalakan **Kirim WhatsApp otomatis** → atur matriks kejadian & template → **Simpan**.
-3. Gunakan **Tes WA** dan **Status device** untuk memeriksa.
+1. **Unggah foto** (JPG/PNG/WEBP, maks. 3 MB, otomatis diperkecil ke 1920 px) atau **tempel URL** gambar / tautan Google Drive. File Drive harus dibagikan ke "Siapa saja yang memiliki link".
+2. Atur urutan dengan ↑ ↓, isi **judul** dan **teks pendukung**, lalu **durasi** tiap gambar (3.000–15.000 ms, bawaan 5.000).
+3. Klik **Simpan halaman masuk**. Pratinjau di kanan langsung memutar slideshow.
 
-Pesan dimasukkan ke antrean lalu dikirim di latar (pemicu 1 menit), sehingga tombol simpan tidak pernah menunggu WhatsApp. Blast dikirim per batch 10/20/50 dengan jeda; nomor ganda dan opt-out dilewati otomatis.
+Maksimal 6 gambar. Bila daftar dikosongkan, 4 ilustrasi bawaan yang tampil. Saat sinkron, gambar dari Drive disalin ke situs (`assets/brand/masuk-N.jpg`) supaya cepat dimuat dan tidak bergantung pada Drive.
+
+### WhatsApp
+
+Semua tombol WhatsApp membuka WhatsApp Admin (wa.me) dengan pesan siap kirim, sesuai PRD v1.1 (pengiriman WA otomatis di luar cakupan).
 
 ---
 
@@ -173,7 +170,7 @@ Pesan dimasukkan ke antrean lalu dikirim di latar (pemicu 1 menit), sehingga tom
 | `isiDataDemo` | Isi data contoh ke database kosong |
 | `resetSandiOwner` | Sandi Owner baru tampil di log (sesi lama Owner dicabut) |
 | `rotasiTokenSecret` | Keluarkan semua pengguna dari semua perangkat |
-| `cekPerforma` | Memanaskan cache & menampilkan pemicu/antrean |
+| `cekPerforma` | Memanaskan cache & menampilkan pemicu |
 
 ## 7. Kendala umum
 
@@ -186,9 +183,22 @@ Pesan dimasukkan ke antrean lalu dikirim di latar (pemicu 1 menit), sehingga tom
 | Absensi ditolak padahal belum jam 22.00 di HP | Batas memakai **jam server WIB**, bukan jam HP | Cek jam di topbar aplikasi; Admin bisa **Buka kunci** 24 jam |
 | PIN orang tua terkunci | Salah 5× | Tunggu 15 menit atau Admin **Reset PIN** |
 
-## 8. Cakupan & batasan versi ini
+## 8. Pembaruan dari versi 1.0.0
 
-- Dibangun: seluruh P0 & P1 PRD, Tutup Bulan (P2), menu **Analitik** baru, modul **Dokumen** (kwitansi, slip honor, laporan kas, sertifikat dengan QR verifikasi & PIN Owner), dan **CRM + WA Fonnte opsional**.
+Bila backend versi 1.0.0 sudah terpasang:
+
+1. Di editor Apps Script, **hapus** file `Notifikasi.gs`, `Dokumen.gs`, dan `QrLib.gs`.
+2. Tempel ulang `Kode.gs`, `Inti.gs`, `DemoSeed.gs`, dan `appsscript.json` versi baru → Simpan.
+3. Jalankan `setupAppEnvironment` sekali. Pemicu antrean 1 menit yang lama otomatis dihapus.
+4. **Deploy → Kelola deployment → ✏️ Edit → Versi baru → Deploy**.
+5. Hapus juga `FONNTE_TOKEN` dari Script Properties bila pernah diisi.
+
+Sheet lama (`AntrianNotif`, `BlastWA`, `CRM_*`, `DE_*`) dan folder `Dokumen`/`Template` di Drive tidak dipakai lagi. Data lain tidak berubah. Sheet dan folder lama boleh dihapus manual setelah dicadangkan.
+
+## 9. Cakupan & batasan versi ini
+
+- Dibangun: seluruh P0 & P1 PRD, Tutup Bulan (P2), email ringkas ke Owner (P2), dan menu **Analitik** baru. Laporan kas bulanan & rekap honor dapat diunduh PDF/Excel dari halaman Arus Kas dan Honor Pelatih (PRD 4.5).
+- Versi 1.1.0 menghapus modul Dokumen (kwitansi, slip, sertifikat, PIN & QR verifikasi) serta CRM & WhatsApp Fonnte, supaya sesuai PRD v1.1.
 - Gambar referensi dipakai sebagai acuan gaya. Fitur yang hanya ada di gambar dan tidak ada di PRD **tidak** dibangun: PIN di setiap simpan, pencocokan mutasi BCA, saldo multi-rekening, geo-tagging, alamat IP di log, penjadwal otomatis, kapasitas lajur/suhu kolam, dan aturan "batal < 4 jam = Hangus".
 - Belum ada: mode gelap (J4) dan pengecualian izin per akun (A6, P2).
 - Sesi login tidak ikut berpindah antarperangkat. Apps Script tidak bisa membaca IP, jadi pembatasan login berlaku per username/kode akses.

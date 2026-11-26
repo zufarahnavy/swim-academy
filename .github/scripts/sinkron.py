@@ -1,11 +1,13 @@
-"""Ambil snapshot publik dari Apps Script, validasi, tulis config/app-config.json + logo/favicon.
+"""Ambil snapshot publik dari Apps Script, validasi, tulis config/app-config.json + logo/favicon
++ gambar slideshow halaman masuk (file Drive disalin ke assets/brand agar cepat & tidak bergantung Drive).
 Gagal (exit 1) bila nama kunci JSON memuat kata terlarang atau skema tidak valid (PRD 4.6 & K2)."""
 import base64, json, os, re, sys, urllib.request
 
-KUNCI = {'versi', 'nama_app', 'tagline', 'logo', 'favicon', 'kontak_admin', 'tema', 'jenis_paket', 'paket', 'form'}
+KUNCI = {'versi', 'nama_app', 'tagline', 'logo', 'favicon', 'kontak_admin', 'tema', 'jenis_paket', 'paket', 'form', 'login'}
 TERLARANG = re.compile(r'(rekening|harga|tarif|nominal|honor)', re.I)
 HEX = re.compile(r'^#[0-9A-Fa-f]{6}$')
-EKSTENSI = {'image/png': 'png', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico', 'image/jpeg': 'jpg'}
+EKSTENSI = {'image/png': 'png', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico', 'image/jpeg': 'jpg', 'image/webp': 'webp'}
+URL_SLIDE = re.compile(r'^(https://[^\s"\'<>]{8,600}|assets/[\w/.-]{3,120})$')
 
 def keluaran(**kv):
     with open(os.environ.get('GITHUB_OUTPUT', os.devnull), 'a') as f:
@@ -54,6 +56,22 @@ def main():
         jalur = f'assets/brand/{jenis}-kustom.{ext}'
         with open(jalur, 'wb') as f: f.write(base64.b64decode(a['data']['base64']))
         d[jenis] = jalur
+    login = d.get('login') or {}
+    if not isinstance(login, dict) or not isinstance(login.get('slides', []), list): sys.exit('GAGAL: pengaturan halaman masuk tidak valid.')
+    slides = []
+    for f in os.listdir('assets/brand'):
+        if f.startswith('masuk-'): os.remove(os.path.join('assets/brand', f))   # slide lama dibuang, disalin ulang
+    for i, u in enumerate(login.get('slides', [])[:6]):
+        if not isinstance(u, str) or not URL_SLIDE.match(u): sys.exit(f'GAGAL: alamat slide ke-{i + 1} tidak valid.')
+        if 'drive.google.com' in u:
+            a = ambil(url + f'?action=publicAset&jenis=login&i={i}')
+            if a.get('ok'):
+                jalur = f"assets/brand/masuk-{i + 1}.{EKSTENSI.get(a['data']['mime'], 'jpg')}"
+                with open(jalur, 'wb') as f: f.write(base64.b64decode(a['data']['base64']))
+                u = jalur
+            else: print(f'Peringatan: slide {i + 1} tetap dimuat langsung dari Drive ({a.get("error", {}).get("message", "")}).')
+        slides.append(u)
+    if login: login['slides'] = slides; d['login'] = login
     with open('config/app-config.json', 'w', encoding='utf-8') as f:
         json.dump(d, f, ensure_ascii=False, indent=2, sort_keys=True); f.write('\n')
     print(f'Snapshot v{d.get("versi")} valid dan ditulis.')

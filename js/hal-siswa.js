@@ -108,6 +108,7 @@
       ev.preventDefault(); var v = UI2.baca(f), tombol = f.querySelector('[type=submit]');
       var muatan = { id: r.id, koreksi: { nama: v.nama, tgl_lahir: v.tgl_lahir }, coach_id: v.coach_id, kolam_id: v.kolam_id, jam: v.jam, tgl_mulai: v.tgl_mulai };
       if (v.hari) muatan.jadwal = { hari: Number(v.hari), jam_mulai: v.jam_mulai, jam_selesai: v.jam_selesai };
+      muatan.portal = W.urlPortal();
       MR.UI.kerja(tombol, function () { return API.T('daftar.verifikasi', muatan); }, { form: f }).then(function (h) { m.tutup(); hasilVerifikasi(h, dt); R.muatUlang(); }).catch(function () { });
     });
     f.querySelector('[data-x=tolak]').onclick = function () {
@@ -123,7 +124,7 @@
       '<div class="mt16 daftar-ikon">' + h.siswa.map(function (x) { return '<div class="item-ikon">' + UI2.avatar(x.nama) + '<div class="tumbuh"><b class="kecil">' + e(x.nama) + '</b><div class="kecil redup">Kode akses portal</div></div><b class="kotak-kode" style="padding:6px 10px">' + e(x.kode_akses) + '</b></div>'; }).join('') +
       '<div class="item-ikon"><span class="ubin">' + ik('kunci') + '</span><div class="tumbuh"><b class="kecil">PIN orang tua</b><div class="kecil redup">' + (h.pin ? 'Akun orang tua baru dibuat' : 'Akun orang tua sudah ada (saudara terhubung)') + '</div></div><b class="kotak-kode" style="padding:6px 10px">' + e(h.pin || 'PIN lama') + '</b></div></div>' +
       '<div class="kartu pad mt16" style="background:#F8FAFC"><div class="kecil redup">Pratinjau pesan</div><p class="kecil mt8" style="white-space:pre-line">' + e(h.wa.teks) + '</p></div>',
-      kaki: (h.dok_id ? '<a class="btn" href="#/dokumen?id=' + e(h.dok_id) + '">' + ik('struk', 'k') + 'Kwitansi</a>' : '') + '<button type="button" class="btn" data-x="salin">' + ik('salin', 'k') + 'Salin pesan</button><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/' + e(h.wa.nomor) + '?text=' + encodeURIComponent(h.wa.teks) + '">' + ik('wa', 'k') + 'Kirim via WhatsApp</a>' });
+      kaki: '<button type="button" class="btn" data-x="salin">' + ik('salin', 'k') + 'Salin pesan</button><a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/' + e(h.wa.nomor) + '?text=' + encodeURIComponent(h.wa.teks) + '">' + ik('wa', 'k') + 'Kirim via WhatsApp</a>' });
     m.on('click', '[data-x=salin]', function () { UI2.salin(h.wa.teks, 'Pesan disalin.'); });
     m.on('click', 'a[href^="#"]', function () { m.tutup(); });
   }
@@ -220,7 +221,6 @@
             '<div class="grid g4 mt12 kecil">' + [['Pelatih', p.pelatih], ['Lokasi', (p.lokasi === 'Home Visit' ? 'HV · ' : '') + p.kolam], ['Mulai', F.tgl(p.tgl_mulai)], ['Kedaluwarsa', p.tgl_kedaluwarsa ? F.tgl(p.tgl_kedaluwarsa) : 'Tanpa batas']].map(function (x) { return '<div><div class="redup">' + x[0] + '</div><b>' + e(x[1]) + '</b></div>'; }).join('') + '</div>' +
             (p.sesi_bawaan ? '<p class="kecil redup mt8">Termasuk ' + p.sesi_bawaan + ' sesi dibawa dari paket sebelumnya.</p>' : '') + (p.sesi_lebih ? '<p class="kecil teks-warn mt8">' + p.sesi_lebih + ' sesi lebih (absen setelah paket HABIS).</p>' : '') +
             (p.status !== 'Selesai' && b.kelola ? '<div class="baris bungkus mt12"><button type="button" class="btn kecil" data-x="ubahPaket" data-enr="' + e(p.enr_id) + '">' + ik('pensil', 'k') + 'Ubah pelatih/kolam</button>' + (b.link ? '<button type="button" class="btn kecil wa" data-x="link" data-enr="' + e(p.enr_id) + '">' + ik('wa', 'k') + 'Link perpanjangan</button>' : '') + '<button type="button" class="btn kecil bahaya" data-x="selesai" data-enr="' + e(p.enr_id) + '">Selesaikan</button></div>' : '') +
-            (b.dokumen && p.sesi_terpakai > 0 ? '<button type="button" class="btn kecil hantu mt8" data-x="sertifikat" data-enr="' + e(p.enr_id) + '">' + ik('piala', 'k') + 'Buat sertifikat</button>' : '') +
             (p.riwayat && p.riwayat.length ? '<details class="mt12"><summary class="kecil tebal" style="cursor:pointer">Riwayat kehadiran (' + p.riwayat.length + ')</summary>' + UI2.tabel({ baris: p.riwayat, kolom: [{ label: 'Ke', f: function (a) { return '#' + a.pertemuan_ke; } }, { label: 'Tanggal', f: function (a) { return e(F.tglHari(a.tanggal)); } }, { label: 'Status', f: function (a) { return a.peserta.filter(function (x) { return x.siswa_id === s.siswa_id; }).map(function (x) { return UI2.status(x.status); }).join(' ') + (a.dihitung ? '' : ' <span class="kecil redup">tidak dihitung</span>') + (a.sesi_lebih ? ' <span class="status warn polos">lebih</span>' : '') + (a.koreksi ? ' <span class="status netral polos">koreksi</span>' : ''); } }, { label: 'Pelatih', k: 'pelatih' }, { label: 'Waktu server', f: function (a) { return e(F.jam(a.waktu_server)) + (a.via_buka_kunci ? ' · buka kunci' : ''); } }] }) + '</details>' : '') +
             '</div>';
         }).join('') : '<div class="kartu pad">' + MR.UI.kosong('Belum ada paket', 'Tambahkan paket untuk mulai menjadwalkan latihan.') + '</div>') +
@@ -234,7 +234,6 @@
         if (x === 'link') W.buatLinkPerpanjangan(enr, t);
         if (x === 'selesai') UI2.mintaTeks({ judul: 'Selesaikan paket?', pesan: 'Paket ditutup (status Selesai) dan slot jadwal dinonaktifkan. Riwayat tetap tersimpan.', label: 'Alasan', ph: 'mis. tidak melanjutkan / pindah kota', ok: 'Selesaikan paket', bahaya: true, min: 3 }).then(function (al) { if (al) API.T('paket.selesai', { enr_id: enr, alasan: al }).then(function () { MR.UI.toast('Paket diselesaikan.', 'ok'); m.tutup(); R.muatUlang(); }).catch(MR.UI.galat); });
         if (x === 'resetPin') MR.UI.konfirmasi({ judul: 'Reset PIN orang tua?', pesan: 'PIN lama langsung tidak berlaku dan sesi orang tua di semua perangkat berakhir.', ok: 'Reset PIN', bahaya: true }).then(function (y) { if (y) API.T('akun.reset', { user_id: d.ortu.user_id }).then(W.tampilRahasiaBaru).catch(MR.UI.galat); });
-        if (x === 'sertifikat') API.T('dok.buat', { jenis: 'SERTIFIKAT', ref: { enr_id: enr, siswa_id: s.siswa_id } }).then(function (r) { MR.UI.toast('Sertifikat dibuat' + (r.dokumen[0].status === 'MENUNGGU_TTD' ? ' — menunggu persetujuan Owner.' : '.'), 'ok', { aksi: { label: 'Lihat', fn: function () { m.tutup(); location.hash = '#/dokumen?id=' + r.dokumen[0].id; } } }); }).catch(MR.UI.galat);
       });
     }).catch(function (er) { m.isi.innerHTML = MR.UI.kosong('Gagal memuat', er.message); });
   };

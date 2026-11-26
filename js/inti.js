@@ -1,16 +1,16 @@
 /* =====================================================================
- * INTI SWIM ACADEMY — aturan bisnis & seluruh layanan (v1.0.0)
+ * INTI SWIM ACADEMY — aturan bisnis & seluruh layanan (v1.1.0)
  * Satu sumber dipakai di dua tempat dengan isi IDENTIK:
  *   apps-script/Inti.gs → backend Google Apps Script (data di Google Sheets)
  *   js/inti.js          → mode demo di browser (data contoh di localStorage)
- * Lingkungan (penyimpanan, kunci, hash, kirim WA, Drive) disuntikkan lewat
+ * Lingkungan (penyimpanan, kunci, hash, email, Drive) disuntikkan lewat
  * objek `env`, jadi aturan di sini tidak tahu sedang jalan di mana.
  * ===================================================================== */
 var Inti = (function () {
   'use strict';
-  var VERSI_APP = '1.0.0';
+  var VERSI_APP = '1.1.0';
 
-  /* ---------- 1. Skema 35 sheet (25 sheet PRD + 10 modul tambahan) ---------- */
+  /* ---------- 1. Skema 26 sheet (PRD v1.1 + riwayat 10 versi pengaturan) ---------- */
   var SKEMA = {
     Config_Terkunci: { id: 'key', kolom: ['key', 'value', 'updated_by', 'updated_at'] },
     Harga_Paket: { id: 'harga_id', prefix: 'HRG', kolom: ['harga_id', 'paket_id', 'harga', 'biaya_tambahan_per_peserta', 'berlaku_mulai', 'updated_by', 'updated_at'], angka: ['harga', 'biaya_tambahan_per_peserta'] },
@@ -37,16 +37,7 @@ var Inti = (function () {
     Pendaftaran_Masuk: { id: 'id', prefix: 'REG', kolom: ['id', 'token', 'tipe', 'enr_lama', 'form_versi', 'data_json', 'bukti_file_id', 'persetujuan_data_at', 'status', 'catatan', 'enr_baru', 'diverifikasi_oleh', 'diverifikasi_at', 'dibuat_at'] },
     Tutup_Bulan: { id: 'periode', kolom: ['periode', 'ditutup_oleh', 'waktu', 'ringkasan_json'] },
     Log_Audit: { id: 'log_id', prefix: 'LOG', besar: true, kolom: ['log_id', 'waktu', 'user_id', 'peran', 'aksi', 'objek', 'nilai_lama', 'nilai_baru'] },
-    Riwayat_Pengaturan: { id: 'rp_id', prefix: 'RP', kolom: ['rp_id', 'versi', 'bagian', 'data_json', 'oleh', 'waktu'], angka: ['versi'] },
-    AntrianNotif: { id: 'antrian_id', prefix: 'ANT', besar: true, kolom: ['antrian_id', 'kanal', 'tujuan', 'nama_penerima', 'subjek', 'pesan', 'event', 'ref_id', 'blast_id', 'status', 'percobaan', 'respon', 'dibuat_at', 'dikirim_at'], angka: ['percobaan'] },
-    BlastWA: { id: 'blast_id', prefix: 'BLW', kolom: ['blast_id', 'judul', 'pesan', 'sasaran', 'total', 'terkirim', 'gagal', 'ukuran_batch', 'jeda', 'status', 'dibuat_oleh', 'dibuat_at', 'selesai_at'], angka: ['total', 'terkirim', 'gagal', 'ukuran_batch'] },
-    CRM_Kontak: { id: 'kontak_id', prefix: 'KTK', kolom: ['kontak_id', 'nama', 'email', 'no_wa', 'segmen', 'sumber', 'ref_id', 'tag', 'status_wa', 'cek_wa_at', 'email_valid', 'opt_out', 'catatan', 'jumlah_pesan', 'terakhir_dihubungi', 'info', 'dibuat_at', 'diperbarui_at'], angka: ['jumlah_pesan'] },
-    CRM_Interaksi: { id: 'interaksi_id', prefix: 'INT', besar: true, kolom: ['interaksi_id', 'kontak_id', 'kanal', 'arah', 'ringkasan', 'ref_id', 'oleh', 'tanggal'] },
-    DE_Template: { id: 'kode', kolom: ['kode', 'nama', 'engine', 'file_id', 'bidang', 'slot_ttd', 'keluaran', 'qr_per_penandatangan', 'versi', 'aktif', 'diperbarui'], angka: ['versi'] },
-    DE_Dokumen: { id: 'id', prefix: 'DOK', kolom: ['id', 'template_kode', 'versi', 'nomor', 'judul', 'ref', 'status', 'data_isian', 'penandatangan', 'kode_verifikasi', 'hash_pdf', 'berkas', 'dibuat', 'terbit', 'oleh', 'alasan_tarik'], angka: ['versi'] },
-    DE_Pejabat: { id: 'user_id', kolom: ['user_id', 'nama', 'jabatan', 'pin_hash', 'pin_salt', 'aktif'] },
-    DE_Nomor: { id: 'kode', kolom: ['kode', 'format', 'tahun', 'urut'], angka: ['tahun', 'urut'] },
-    DE_Antrean: { id: 'job_id', prefix: 'JOB', kolom: ['job_id', 'jenis', 'dok_id', 'status', 'galat', 'percobaan', 'dibuat', 'selesai'], angka: ['percobaan'] }
+    Riwayat_Pengaturan: { id: 'rp_id', prefix: 'RP', kolom: ['rp_id', 'versi', 'bagian', 'data_json', 'oleh', 'waktu'], angka: ['versi'] }
   };
 
   /* ---------- 2. Konstanta bisnis ---------- */
@@ -84,10 +75,12 @@ var Inti = (function () {
     sinkron: { status: 'Belum pernah', waktu: '', pesan: '', gagal_berturut: 0, versi: 0 },
     publik_versi: 1,
     hak_akses_versi: 1,
-    notif: { wa_aktif: false, email_aktif: false, matriks: {}, batch: 20, jeda: '5', deteksi_otomatis: true, nama_pengirim: 'Swim Academy', app_url: '' }
+    /* Halaman masuk: slideshow kosong = ilustrasi bawaan di assets/ilustrasi/masuk-*.svg */
+    login: { slides: [], headline: 'Disiplin di air, percaya diri di daratan.', subjudul: 'Pantau jadwal, absensi, dan perkembangan latihan renang dalam satu tempat.', durasi: 5000 }
   };
+  var LOGIN_MAKS_SLIDE = 6;
 
-  /* Katalog izin (PRD 3.4) + tambahan: analitik, CRM, blast WA, dokumen */
+  /* Katalog izin (PRD 3.4) + tambahan: analitik */
   var IZIN = [
     ['siswa.lihat', 'Melihat data siswa (sesuai batas data)', 'Siswa & Pendaftaran', 'apo', 'apo'],
     ['siswa.kelola', 'Menambah, mengubah, menonaktifkan siswa dan paket aktif', 'Siswa & Pendaftaran', 'a', 'a'],
@@ -110,9 +103,6 @@ var Inti = (function () {
     ['honor.rekap_sendiri', 'Melihat rekap jumlah sesi sendiri', 'Keuangan', 'p', 'p'],
     ['honor.nominal_sendiri', 'Melihat nominal honor sendiri', 'Keuangan', 'p', ''],
     ['tutup_bulan', 'Menutup bulan', 'Keuangan', 'a', 'a'],
-    ['crm.kelola', 'Melihat & mengelola CRM Kontak', 'Komunikasi', 'a', 'a'],
-    ['wa.blast', 'Mengirim blast WhatsApp per batch (Fonnte)', 'Komunikasi', 'a', ''],
-    ['dokumen.kelola', 'Membuat & mengunduh dokumen (kwitansi, slip, laporan, sertifikat)', 'Komunikasi', 'a', 'a'],
     ['pengaturan.tampilan', 'Identitas dan tema', 'Pengaturan', 'a', 'a'],
     ['pengaturan.master', 'Paket tanpa harga, kategori kas, data master', 'Pengaturan', 'a', 'a'],
     ['pengaturan.form', 'Form builder', 'Pengaturan', 'a', 'a'],
@@ -126,27 +116,9 @@ var Inti = (function () {
   var INTI_OWNER = [
     'Mengubah rekening, harga paket, dan biaya tambahan', 'Mengubah tarif honor', 'Mengubah Aturan Bisnis',
     'Mengubah atau membatalkan transaksi kas', 'Mengubah Hak Akses peran', 'Membaca log audit',
-    'Mengelola akun Admin dan Owner', 'Token GitHub, token Fonnte & rahasia lain', 'Blok rekening & persetujuan data di form'
+    'Mengelola akun Admin dan Owner', 'Token GitHub & rahasia lain', 'Blok rekening & persetujuan data di form'
   ];
 
-  var NOTIF_EVENTS = {
-    PENDAFTARAN_MASUK: { label: 'Pendaftaran diterima sistem', wa: true, email: false, subjek: 'Pendaftaran Diterima',
-      pesan: 'Halo {nama}, pendaftaran *{peserta}* untuk paket *{paket}* sudah kami terima dan sedang diverifikasi Admin. Terima kasih.\n— {institusi}' },
-    PENDAFTARAN_DIVERIFIKASI: { label: 'Pendaftaran diverifikasi (kode akses + PIN)', wa: true, email: true, subjek: 'Akses Portal Orang Tua',
-      pesan: 'Selamat {nama}! Pendaftaran *{peserta}* sudah aktif.\nPaket: {paket}\nPortal orang tua: {link}\nKode akses: *{kode}*\nPIN: *{pin}*\n— {institusi}' },
-    PAKET_SISA_1: { label: 'Paket tersisa 1 sesi', wa: true, email: false, subjek: 'Sisa 1 Sesi',
-      pesan: 'Halo {nama}, paket *{paket}* {peserta} tinggal *1 sesi*. Silakan hubungi Admin untuk perpanjangan.\n— {institusi}' },
-    PAKET_HABIS: { label: 'Paket HABIS', wa: true, email: true, subjek: 'Paket Latihan Habis',
-      pesan: 'Halo {nama}, paket *{paket}* {peserta} sudah *HABIS* ({terpakai}/{total} sesi). Hubungi Admin untuk perpanjangan agar jadwal tetap aman.\n— {institusi}' },
-    ABSENSI_TERCATAT: { label: 'Kehadiran tercatat (ke orang tua)', wa: false, email: false, subjek: 'Kehadiran Tercatat',
-      pesan: '{peserta} tercatat *{status}* pada sesi {tanggal} bersama {pelatih}. Sisa sesi: {sisa}.\n— {institusi}' },
-    KWITANSI_TERBIT: { label: 'Kwitansi terbit', wa: false, email: true, subjek: 'Kwitansi {nomor}',
-      pesan: 'Halo {nama}, kwitansi *{nomor}* sebesar *{nominal}* sudah terbit. Cek keaslian: {link}\n— {institusi}' },
-    OWNER_BUKA_KUNCI: { label: 'Owner: kunci absensi dibuka', wa: false, email: true, ke: 'owner', subjek: 'Kunci Absensi Dibuka',
-      pesan: '{oleh} membuka kunci absensi {pelatih} untuk tanggal {tanggal}. Alasan: {alasan}' },
-    OWNER_SINKRON_GAGAL: { label: 'Owner: sinkron GitHub gagal berulang', wa: false, email: true, ke: 'owner', subjek: 'Sinkron GitHub Gagal',
-      pesan: 'Sinkron pengaturan ke GitHub gagal {kali} kali berturut-turut. Pesan terakhir: {pesan}' }
-  };
 
   /* ---------- 3. Utilitas umum ---------- */
   function Gagal(pesan, code, fields) { var e = new Error(pesan); e.__inti = true; e.code = code || 'VALIDATION'; e.fields = fields || null; return e; }
@@ -259,7 +231,7 @@ var Inti = (function () {
   function samarkan(v) { v = String(v || ''); return !v ? '' : v.length <= 8 ? '••••••' : v.slice(0, 4) + '••••••' + v.slice(-3); }
 
   /* ---------- 4. Konteks & akses data ---------- */
-  function buatKonteks(env, now) { return { env: env, db: env.db, now: now, hariIni: tglWIB(now), me: null, _peta: {}, _matriks: null, _notif: [] }; }
+  function buatKonteks(env, now) { return { env: env, db: env.db, now: now, hariIni: tglWIB(now), me: null, _peta: {}, _matriks: null, _email: [] }; }
   function semua(ctx, t, o) { return ctx.db.semua(t, o) || []; }
   function aktif(rows) { return rows.filter(function (r) { return r.aktif !== 'T'; }); }
   function petaDari(rows, k) { var m = {}; rows.forEach(function (r) { m[r[k]] = r; }); return m; }
@@ -472,10 +444,11 @@ var Inti = (function () {
       tema: { font_judul: tema.font_judul, font_isi: tema.font_isi, animasi: tema.animasi, warna: tema.warna },
       jenis_paket: atur(ctx, 'jenis_paket'),
       paket: paketUrut(ctx).map(function (p) { return { paket_id: p.paket_id, nama: p.nama, jenis: p.jenis, lokasi: p.lokasi, jumlah_sesi: num(p.jumlah_sesi), maks_peserta: num(p.maks_peserta) || 1, kategori: kategoriSesi(p) }; }),
-      form: { versi: f.versi, skema: f.skema.map(function (x) { return x.tetap ? { kunci: x.kunci, tipe: x.tipe, tetap: true, label: x.label } : x; }) }
+      form: { versi: f.versi, skema: f.skema.map(function (x) { return x.tetap ? { kunci: x.kunci, tipe: x.tipe, tetap: true, label: x.label } : x; }) },
+      login: (function (l) { return { headline: l.headline, subjudul: l.subjudul, durasi: num(l.durasi) || 5000, slides: (l.slides || []).slice(0, LOGIN_MAKS_SLIDE) }; })(atur(ctx, 'login'))
     };
   }
-  var KUNCI_PUBLIK = ['versi', 'nama_app', 'tagline', 'logo', 'favicon', 'kontak_admin', 'tema', 'jenis_paket', 'paket', 'form'];
+  var KUNCI_PUBLIK = ['versi', 'nama_app', 'tagline', 'logo', 'favicon', 'kontak_admin', 'tema', 'jenis_paket', 'paket', 'form', 'login'];
   var KATA_TERLARANG = /(rekening|harga|tarif|nominal|honor)/i;
   /* Pengaman sebelum dispatch: kunci di luar whitelist / nilai rekening / nominal harga → tolak */
   function cekSnapshot(ctx, snap) {
@@ -502,7 +475,7 @@ var Inti = (function () {
     if (r.belumAtur) { st.status = 'Belum dikonfigurasi'; st.pesan = 'Isi GITHUB_TOKEN & GITHUB_REPO di Script Properties. Pengaturan tetap dipakai langsung dari backend.'; }
     else if (!r.ok) {
       st.status = 'Gagal'; st.pesan = r.pesan || 'Dispatch gagal'; st.gagal_berturut = num(st.gagal_berturut) + 1;
-      if (st.gagal_berturut > 3) antreNotifOwner(ctx, 'OWNER_SINKRON_GAGAL', { kali: st.gagal_berturut, pesan: st.pesan });
+      if (st.gagal_berturut > 3) emailOwner(ctx, 'Sinkron GitHub gagal', 'Sinkron pengaturan ke GitHub gagal ' + st.gagal_berturut + ' kali berturut-turut. Pesan terakhir: ' + st.pesan);
     } else if (r.langsung) { st.status = 'Tersinkron'; st.pesan = 'Snapshot v' + snap.versi + ' dipublikasikan.'; st.gagal_berturut = 0; }
     else { st.status = 'Menunggu publikasi'; st.pesan = alasan || 'Menunggu GitHub Actions'; }
     setAtur(ctx, 'sinkron', st);
@@ -514,7 +487,7 @@ var Inti = (function () {
     var st = atur(ctx, 'sinkron'), okk = d.status === 'success';
     st.status = okk ? 'Tersinkron' : 'Gagal'; st.waktu = kini(ctx); st.pesan = s(d.pesan).slice(0, 300) || (okk ? 'Deploy selesai.' : 'Workflow gagal.');
     st.gagal_berturut = okk ? 0 : num(st.gagal_berturut) + 1;
-    if (!okk && st.gagal_berturut > 3) antreNotifOwner(ctx, 'OWNER_SINKRON_GAGAL', { kali: st.gagal_berturut, pesan: st.pesan });
+    if (!okk && st.gagal_berturut > 3) emailOwner(ctx, 'Sinkron GitHub gagal', 'Sinkron pengaturan ke GitHub gagal ' + st.gagal_berturut + ' kali berturut-turut. Pesan terakhir: ' + st.pesan);
     setAtur(ctx, 'sinkron', st);
     return { status: st.status };
   }
@@ -527,7 +500,7 @@ var Inti = (function () {
     var tema = atur(ctx, 'tema'), f = formAktif(ctx);
     return {
       bisa: b, identitas: atur(ctx, 'identitas'), tema: tema, temaBawaan: TEMA_BAWAAN, kontras: ujiKontras(tema.warna), fontKurasi: FONT_KURASI,
-      absensi: atur(ctx, 'absensi'), jenis_paket: atur(ctx, 'jenis_paket'), sinkron: atur(ctx, 'sinkron'), publik_versi: atur(ctx, 'publik_versi'),
+      absensi: atur(ctx, 'absensi'), jenis_paket: atur(ctx, 'jenis_paket'), login: atur(ctx, 'login'), loginMaks: LOGIN_MAKS_SLIDE, sinkron: atur(ctx, 'sinkron'), publik_versi: atur(ctx, 'publik_versi'),
       master: {
         kolam: semua(ctx, 'Kolam'), pelatih: semua(ctx, 'Pelatih'), kategori_kas: semua(ctx, 'Kategori_Kas'),
         paket: urut(semua(ctx, 'Paket'), function (p) { return num(p.urutan); }).map(function (p) { var o = salin(p); o.kategori = kategoriSesi(p); return o; })
@@ -568,6 +541,7 @@ var Inti = (function () {
   function svcAturSimpan(ctx, d) {
     var bagian = d.bagian, lama, baru;
     if (bagian === 'identitas') { wajibIzin(ctx, 'pengaturan.tampilan'); lama = atur(ctx, 'identitas'); baru = validasiIdentitas(ctx, d.nilai || {}, lama); }
+    else if (bagian === 'login') { wajibIzin(ctx, 'pengaturan.tampilan'); lama = atur(ctx, 'login'); baru = validasiLogin(ctx, d.nilai || {}); }
     else if (bagian === 'tema') { wajibIzin(ctx, 'pengaturan.tampilan'); lama = atur(ctx, 'tema'); baru = d.bawaan ? salin(TEMA_BAWAAN) : validasiTema(d.nilai || {}); }
     else if (bagian === 'jenis_paket') {
       wajibIzin(ctx, 'pengaturan.master'); lama = atur(ctx, 'jenis_paket');
@@ -966,7 +940,7 @@ var Inti = (function () {
     }
     var cur = enrs.filter(function (e) { return e.status !== 'Selesai'; })[0];
     o.jadwal = cur ? jadwalEnr(ctx, cur.enr_id) : [];
-    o.bisa = { kelola: punya(ctx, 'siswa.kelola'), akun: punya(ctx, 'akun.kelola'), link: punya(ctx, 'pendaftaran.link'), dokumen: punya(ctx, 'dokumen.kelola') };
+    o.bisa = { kelola: punya(ctx, 'siswa.kelola'), akun: punya(ctx, 'akun.kelola'), link: punya(ctx, 'pendaftaran.link') };
     return o;
   }
   function jadwalEnr(ctx, enrId) {
@@ -1106,8 +1080,6 @@ var Inti = (function () {
     var row = { id: idBaru(ctx, 'Pendaftaran_Masuk'), token: l.token, tipe: l.tipe, enr_lama: l.enr_id, form_versi: f.versi, data_json: JSON.stringify(data), bukti_file_id: fileId, persetujuan_data_at: kini(ctx), status: 'Baru', catatan: '', enr_baru: '', diverifikasi_oleh: '', diverifikasi_at: '', dibuat_at: kini(ctx) };
     tambah(ctx, 'Pendaftaran_Masuk', [row]);
     if (l.sekali_pakai === 'Y') ubah(ctx, 'Link_Pendaftaran', [{ token: l.token, dipakai: 'Y' }]);
-    kirimNotif(ctx, 'PENDAFTARAN_MASUK', { nama: data.nama_ortu, hp: data.kontak, email: data.email }, { peserta: [data.nama].concat(tambahan.map(function (t) { return t.nama; })).join(' & '), paket: p ? p.nama : '' }, row.id);
-    crmUpsert(ctx, 'calon', row);
     return { id: row.id, pesan: 'Pendaftaran terkirim. Admin akan memverifikasi dan mengirim kode akses portal lewat WhatsApp.' };
   }
   /* Perpanjangan: peserta paket lama memang sudah terdaftar — bukan duplikat */
@@ -1165,12 +1137,9 @@ var Inti = (function () {
     hasil.trx.forEach(function (t) { audit(ctx, 'KAS_INPUT', 'Transaksi:' + t.trx_id, '', { nominal: t.nominal, penjelasan: t.penjelasan, sumber: 'verifikasi ' + r.id }); });
     audit(ctx, 'VERIFIKASI_PENDAFTARAN', 'Pendaftaran:' + r.id, '', { enr: hasil.enr.enr_id, siswa: ids.join(',') });
     var p = cari(ctx, 'Paket', data.paket), id = atur(ctx, 'identitas'), peserta = kodeBaru.map(function (x) { return x.nama; }).join(' & ');
-    var linkPortal = atur(ctx, 'notif').app_url || '';
+    var linkPortal = /^https?:\/\/[^\s]{4,200}$/.test(s(d.portal)) ? s(d.portal) : '';   /* alamat situs dikirim frontend */
     var teks = 'Halo ' + (data.nama_ortu || '') + ', pendaftaran *' + peserta + '* di ' + id.nama_app + ' sudah aktif.\nPaket: ' + (p ? p.nama : '') + '\n' + kodeBaru.map(function (x) { return 'Kode akses ' + x.nama + ': *' + x.kode_akses + '*'; }).join('\n') + (akun.pin ? '\nPIN portal: *' + akun.pin + '*' : '\nPIN: gunakan PIN yang sudah Anda miliki.') + (linkPortal ? '\nPortal: ' + linkPortal : '');
-    kirimNotif(ctx, 'PENDAFTARAN_DIVERIFIKASI', { nama: data.nama_ortu, hp: data.kontak, email: data.email }, { peserta: peserta, paket: p ? p.nama : '', kode: kodeBaru.map(function (x) { return x.kode_akses; }).join(', '), pin: akun.pin || '(PIN lama)', link: linkPortal }, r.id);
-    var dok = hasil.trx[0] ? dokOtomatis(ctx, 'KWITANSI', { trx_id: hasil.trx[0].trx_id }) : null;
-    crmUpsertSiswaDari(ctx, ids);
-    return { enr_id: hasil.enr.enr_id, siswa: kodeBaru, pin: akun.pin, ortu_baru: akun.baru, sesi_bawaan: hasil.sesi_bawaan, trx: hasil.trx.map(function (t) { return { trx_id: t.trx_id, nominal: t.nominal, penjelasan: t.penjelasan }; }), dok_id: dok ? dok.id : '', wa: { nomor: hp62(data.kontak), teks: teks } };
+    return { enr_id: hasil.enr.enr_id, siswa: kodeBaru, pin: akun.pin, ortu_baru: akun.baru, sesi_bawaan: hasil.sesi_bawaan, trx: hasil.trx.map(function (t) { return { trx_id: t.trx_id, nominal: t.nominal, penjelasan: t.penjelasan }; }), wa: { nomor: hp62(data.kontak), teks: teks } };
   }
   function svcTolak(ctx, d) {
     var r = wajibAda(ctx, 'Pendaftaran_Masuk', d.id, 'Pendaftaran');
@@ -1334,14 +1303,8 @@ var Inti = (function () {
       dihitung: dihitung ? 'Y' : 'T', sesi_lebih: lebih && dihitung ? 'Y' : 'T', dibuat_oleh: oleh(ctx), waktu_server: kini(ctx), via_buka_kunci: b.via_buka_kunci ? 'Y' : 'T', status_rekam: 'aktif', koreksi_dari: '', catatan: s(d.catatan).slice(0, 200) };
     tambah(ctx, 'Absensi_Sesi', [row]);
     tambah(ctx, 'Absensi_Peserta', peserta.map(function (x) { return { ap_id: row.absen_id + ':' + x.siswa_id, absen_id: row.absen_id, siswa_id: x.siswa_id, status: input[x.siswa_id] }; }));
-    var statusLama = e.status;
     e = hitungUlangEnr(ctx, e.enr_id);
-    var r = ringkasEnr(ctx, e), ps0 = peserta[0] || {}, penerima = { nama: ps0.nama_ortu, hp: ps0.kontak_ortu, email: ps0.email_ortu }, namaPeserta = peserta.map(function (x) { return x.nama; }).join(' & ');
-    if (dihitung && !lebih) {
-      if (r.status === 'HABIS' && statusLama !== 'HABIS') kirimNotif(ctx, 'PAKET_HABIS', penerima, { peserta: namaPeserta, paket: r.paket, terpakai: r.sesi_terpakai, total: r.sesi_total }, e.enr_id);
-      else if (r.sisa === 1) kirimNotif(ctx, 'PAKET_SISA_1', penerima, { peserta: namaPeserta, paket: r.paket }, e.enr_id);
-    }
-    kirimNotif(ctx, 'ABSENSI_TERCATAT', penerima, { peserta: peserta.map(function (x) { return x.nama + ' (' + input[x.siswa_id] + ')'; }).join(', '), status: dihitung ? 'hadir/dihitung' : 'izin', tanggal: tglIndo(tanggal), pelatih: r.pelatih, sisa: r.sisa }, row.absen_id);
+    var r = ringkasEnr(ctx, e);
     return { absen: ringkasAbsen(ctx, cari(ctx, 'Absensi_Sesi', row.absen_id)), enr: r, dihitung: dihitung, sesi_lebih: lebih };
   }
   function svcAbsensiKoreksi(ctx, d) {
@@ -1391,7 +1354,7 @@ var Inti = (function () {
     var row = { id: idBaru(ctx, 'Buka_Kunci'), coach_id: c.coach_id, tanggal: tgl, alasan: s(d.alasan).slice(0, 300), dibuat_oleh: oleh(ctx), dibuat_at: kini(ctx), berlaku_hingga: waktuWIB(ctx.now + 24 * 3600e3) };
     tambah(ctx, 'Buka_Kunci', [row]);
     audit(ctx, 'BUKA_KUNCI', 'Pelatih:' + c.coach_id + ' ' + tgl, '', row.alasan);
-    antreNotifOwner(ctx, 'OWNER_BUKA_KUNCI', { oleh: ctx.me.nama, pelatih: c.nama, tanggal: tglIndo(tgl), alasan: row.alasan });
+    emailOwner(ctx, 'Kunci absensi dibuka', ctx.me.nama + ' membuka kunci absensi ' + c.nama + ' untuk tanggal ' + tglIndo(tgl) + '. Alasan: ' + row.alasan);
     return { buka: row };
   }
   function svcBukaKunciList(ctx) {
@@ -1676,513 +1639,54 @@ var Inti = (function () {
       perPaket: Object.keys(perPaket).map(function (k) { return perPaket[k]; }).sort(function (a, b) { return b.nilai - a.nilai; }).slice(0, 8),
       perPelatih: Object.keys(perPelatih).map(function (k) { return perPelatih[k]; }).sort(function (a, b) { return b.ini - a.ini; }), wawasan: wawasan, periode: n };
   }
-
-  /* ---------- 19. Notifikasi WA (Fonnte) + Email — opsional, mati bawaan ---------- */
-  function notifCfg(ctx) { return atur(ctx, 'notif'); }
-  function waAktif(ctx) { return !!notifCfg(ctx).wa_aktif && !!ctx.env.rahasia('FONNTE_TOKEN'); }
-  function matriksNotif(ctx) {
-    var simpan = notifCfg(ctx).matriks || {}, out = {};
-    Object.keys(NOTIF_EVENTS).forEach(function (k) {
-      var dd = NOTIF_EVENTS[k], x = simpan[k] || {};
-      out[k] = { kode: k, label: dd.label, ke: dd.ke || 'kontak', wa: x.wa !== undefined ? !!x.wa : dd.wa, email: x.email !== undefined ? !!x.email : dd.email,
-        subjek: x.subjek || dd.subjek, pesan: x.pesan || dd.pesan, subjekBawaan: dd.subjek, pesanBawaan: dd.pesan };
-    });
-    return out;
-  }
-  function barisAntrian(ctx, kanal, tujuan, nama, subjek, pesan, event, ref, blast) {
-    return { antrian_id: idBaru(ctx, 'AntrianNotif') + ctx.env.acak(2).toUpperCase(), kanal: kanal, tujuan: tujuan, nama_penerima: nama || '', subjek: subjek || '', pesan: pesan, event: event || '', ref_id: ref || '', blast_id: blast || '', status: 'Antri', percobaan: 0, respon: '', dibuat_at: kini(ctx), dikirim_at: '' };
-  }
-  /* Satu-satunya pintu notifikasi otomatis. Tidak pernah menggagalkan transaksi utama. */
-  function kirimNotif(ctx, event, penerima, vars, ref) {
+  /* ---------- 19. Halaman masuk (slideshow) & email ringkas ke Owner (PRD 4.5, P2) ---------- */
+  /* Email Owner dikumpulkan dulu, lalu dikirim SETELAH kunci dilepas (lihat jalankan) */
+  function emailOwner(ctx, subjek, pesan) {
     try {
-      var cfg = notifCfg(ctx), wa = waAktif(ctx), em = !!cfg.email_aktif;
-      if (!wa && !em) return 0;
-      var m = matriksNotif(ctx)[event]; if (!m || (!m.wa && !m.email)) return 0;
-      var p = penerima || {}, v = gabung({ institusi: atur(ctx, 'identitas').nama_app, link: cfg.app_url || '', nama: p.nama || 'Bapak/Ibu' }, vars || {}), rows = [];
-      if (wa && m.wa && hpValid(p.hp)) rows.push(barisAntrian(ctx, 'WA', hp62(p.hp), p.nama, '', isiTemplate(m.pesan, v), event, ref, ''));
-      if (em && m.email && emailValid(p.email)) rows.push(barisAntrian(ctx, 'EMAIL', s(p.email), p.nama, isiTemplate(m.subjek, v), isiTemplate(m.pesan, v), event, ref, ''));
-      if (rows.length) { tambah(ctx, 'AntrianNotif', rows); ctx._notif = ctx._notif.concat(rows); }
-      return rows.length;
-    } catch (e) { return 0; }
-  }
-  function antreNotifOwner(ctx, event, vars) {
-    try {
-      var m = matriksNotif(ctx)[event], id = atur(ctx, 'identitas'), email = id.email_owner;
-      if (!m || !m.email || !emailValid(email)) return;
-      var v = gabung({ institusi: id.nama_app }, vars || {}), row = barisAntrian(ctx, 'EMAIL', email, 'Owner', isiTemplate(m.subjek, v), isiTemplate(m.pesan, v), event, '', '');
-      tambah(ctx, 'AntrianNotif', [row]); ctx._notif.push(row);
+      var id = atur(ctx, 'identitas');
+      if (!emailValid(id.email_owner)) return;
+      ctx._email.push({ ke: s(id.email_owner), subjek: '[' + id.nama_app + '] ' + subjek, pesan: pesan, nama: id.nama_app });
     } catch (e) { }
   }
-  function prosesAntrian(ctx, o) {
-    o = o || {};
-    var rows = semua(ctx, 'AntrianNotif', { ekor: 3000 }).filter(function (r) { return r.status === 'Antri' && (!o.blast_id || r.blast_id === o.blast_id); });
-    if (!rows.length) return { terkirim: 0, gagal: 0, sisa: 0 };
-    var cfg = notifCfg(ctx), wa = [], em = [], perBlast = {}, blastAktif = {};
-    semua(ctx, 'BlastWA').forEach(function (b) { if (b.status === 'Berjalan') blastAktif[b.blast_id] = b; });
-    var kuotaEmail = Math.min(40, ctx.env.emailKuota ? ctx.env.emailKuota() : 40);
-    rows.forEach(function (r) {
-      if (r.blast_id) { var b = blastAktif[r.blast_id]; if (!b) return; var n = perBlast[r.blast_id] = perBlast[r.blast_id] || []; if (n.length < (num(b.ukuran_batch) || 20)) n.push(r); return; }
-      if (o.hanyaBlast) return;
-      if (r.kanal === 'WA' && wa.length < 30) wa.push(r);
-      if (r.kanal === 'EMAIL' && em.length < kuotaEmail) em.push(r);
-    });
-    var ubahRows = [], kirim = 0, gagal = 0, tujuanOk = [];
-    function tandai(r, h) {
-      var x = { antrian_id: r.antrian_id, percobaan: num(r.percobaan) + 1, respon: s(h.respon).slice(0, 200) };
-      if (h.ok) { x.status = 'Terkirim'; x.dikirim_at = kini(ctx); kirim++; tujuanOk.push(r.tujuan); } else { gagal++; x.status = x.percobaan >= 3 ? 'Gagal' : 'Antri'; }
-      ubahRows.push(x); r.status = x.status;
-    }
-    var batchWA = wa.concat.apply(wa, Object.keys(perBlast).map(function (k) { return perBlast[k]; }));
-    if (batchWA.length) {
-      var hasil = ctx.env.waKirim ? ctx.env.waKirim(batchWA.map(function (r) { return { target: r.tujuan, message: r.pesan }; }), cfg.jeda) : batchWA.map(function () { return { ok: false, respon: 'WA tidak tersedia' }; });
-      batchWA.forEach(function (r, i) { tandai(r, hasil[i] || { ok: false, respon: 'Tanpa respon' }); });
-    }
-    em.forEach(function (r) { tandai(r, ctx.env.emailKirim ? ctx.env.emailKirim({ ke: r.tujuan, subjek: r.subjek, pesan: r.pesan, nama: cfg.nama_pengirim }) : { ok: false, respon: 'Email tidak tersedia' }); });
-    ubah(ctx, 'AntrianNotif', ubahRows);
-    Object.keys(perBlast).forEach(function (id) {
-      var semuaB = semua(ctx, 'AntrianNotif', { ekor: 6000 }).filter(function (r) { return r.blast_id === id; }), b = blastAktif[id];
-      var t = semuaB.filter(function (r) { return r.status === 'Terkirim'; }).length, g = semuaB.filter(function (r) { return r.status === 'Gagal'; }).length, sisa = semuaB.filter(function (r) { return r.status === 'Antri'; }).length;
-      ubah(ctx, 'BlastWA', [{ blast_id: id, terkirim: t, gagal: g, status: sisa ? 'Berjalan' : 'Selesai', selesai_at: sisa ? '' : kini(ctx) }]);
-      b.sisa = sisa;
-    });
-    crmCatatKirim(ctx, tujuanOk);
-    return { terkirim: kirim, gagal: gagal, sisa: rows.filter(function (r) { return r.status === 'Antri'; }).length };
-  }
-  function svcNotifConfig(ctx) {
-    var cfg = notifCfg(ctx), tok = ctx.env.rahasia('FONNTE_TOKEN');
-    return { wa_aktif: !!cfg.wa_aktif, email_aktif: !!cfg.email_aktif, token_ada: !!tok, token_samar: samarkan(tok), batch: cfg.batch, jeda: cfg.jeda, deteksi_otomatis: cfg.deteksi_otomatis,
-      nama_pengirim: cfg.nama_pengirim, app_url: cfg.app_url, email_kuota: ctx.env.emailKuota ? ctx.env.emailKuota() : null, matriks: matriksNotif(ctx), email_owner: atur(ctx, 'identitas').email_owner };
-  }
-  function svcNotifConfigSave(ctx, d) {
-    var cfg = notifCfg(ctx), f = {};
-    if (d.token === '__HAPUS__') ctx.env.setRahasia('FONNTE_TOKEN', '');
-    else if (s(d.token)) { if (s(d.token).length < 10 || s(d.token).length > 200) f.token = 'Token tidak valid'; else ctx.env.setRahasia('FONNTE_TOKEN', s(d.token)); }
-    if ([10, 20, 50].indexOf(num(d.batch)) < 0) f.batch = 'Pilih 10/20/50';
-    if (!/^\d{1,3}(-\d{1,3})?$/.test(s(d.jeda))) f.jeda = 'Contoh: 5 atau 3-8';
-    if (d.app_url && !/^https?:\/\//.test(s(d.app_url))) f.app_url = 'Harus diawali https://';
-    if (Object.keys(f).length) throw Gagal('Periksa kembali konfigurasi.', 'VALIDATION', f);
-    if (d.wa_aktif && !ctx.env.rahasia('FONNTE_TOKEN')) throw Gagal('Isi token Fonnte sebelum mengaktifkan WhatsApp.', 'VALIDATION', { token: 'Wajib sebelum aktif' });
-    var simpanM = {};
-    Object.keys(d.matriks || {}).forEach(function (k) {
-      var dd = NOTIF_EVENTS[k], x = d.matriks[k]; if (!dd) return;
-      var o = {}; if (!!x.wa !== dd.wa) o.wa = !!x.wa; if (!!x.email !== dd.email) o.email = !!x.email;
-      if (s(x.pesan) && s(x.pesan) !== dd.pesan) o.pesan = s(x.pesan).slice(0, 1500); if (s(x.subjek) && s(x.subjek) !== dd.subjek) o.subjek = s(x.subjek).slice(0, 120);
-      if (Object.keys(o).length) simpanM[k] = o;
-    });
-    var baru = { wa_aktif: !!d.wa_aktif, email_aktif: !!d.email_aktif, matriks: simpanM, batch: num(d.batch), jeda: s(d.jeda), deteksi_otomatis: d.deteksi_otomatis !== false, nama_pengirim: s(d.nama_pengirim).slice(0, 60) || 'Swim Academy', app_url: s(d.app_url) };
-    setAtur(ctx, 'notif', baru);
-    audit(ctx, 'KONFIGURASI_NOTIF', 'Pengaturan.notif', { wa_aktif: cfg.wa_aktif, email_aktif: cfg.email_aktif }, { wa_aktif: baru.wa_aktif, email_aktif: baru.email_aktif, token: s(d.token) ? 'diperbarui' : 'tetap' });
-    if (ctx.env.pasangTriggerNotif) ctx.env.pasangTriggerNotif();
-    return svcNotifConfig(ctx);
-  }
-  function svcNotifQueue(ctx, d) {
-    var rows = semua(ctx, 'AntrianNotif', { ekor: 3000 }), r = { Antri: 0, Terkirim: 0, Gagal: 0, Batal: 0 };
-    rows.forEach(function (x) { r[x.status] = (r[x.status] || 0) + 1; });
-    var f = rows.filter(function (x) { return (!d.status || x.status === d.status) && (!d.kanal || x.kanal === d.kanal) && (!d.blast_id || x.blast_id === d.blast_id); });
-    return { ringkas: r, rows: urut(f, function (x) { return x.dibuat_at + x.antrian_id; }, true).slice(0, 300) };
-  }
-  function svcNotifRetry(ctx) { var g = semua(ctx, 'AntrianNotif', { ekor: 3000 }).filter(function (x) { return x.status === 'Gagal'; }); ubah(ctx, 'AntrianNotif', g.map(function (x) { return { antrian_id: x.antrian_id, status: 'Antri', percobaan: 0 }; })); return { diulang: g.length }; }
-  function svcNotifProses(ctx, d) { return prosesAntrian(ctx, { blast_id: d.blast_id, hanyaBlast: !!d.blast_id }); }
-  function svcWaDevice(ctx) { if (!ctx.env.rahasia('FONNTE_TOKEN')) throw Gagal('Token Fonnte belum diisi.'); return ctx.env.waDevice ? ctx.env.waDevice() : { ok: false, pesan: 'Tidak tersedia' }; }
-  function svcWaTes(ctx, d) {
-    if (!ctx.env.rahasia('FONNTE_TOKEN')) throw Gagal('Token Fonnte belum diisi.');
-    if (!hpValid(d.nomor)) throw Gagal('Nomor tidak valid.', 'VALIDATION', { nomor: 'Nomor tidak valid' });
-    var h = ctx.env.waKirim([{ target: hp62(d.nomor), message: 'Tes WhatsApp dari ' + atur(ctx, 'identitas').nama_app + ' ✅' }], '1')[0] || {};
-    if (!h.ok) throw Gagal('Gagal mengirim: ' + (h.respon || 'tanpa respon'));
-    return { ok: true };
-  }
-  function svcEmailTes(ctx, d) {
-    if (!emailValid(d.email)) throw Gagal('Email tidak valid.', 'VALIDATION', { email: 'Email tidak valid' });
-    var h = ctx.env.emailKirim({ ke: s(d.email), subjek: 'Tes email ' + atur(ctx, 'identitas').nama_app, pesan: 'Email ini membuktikan notifikasi email berjalan. ✅', nama: notifCfg(ctx).nama_pengirim }) || {};
-    if (!h.ok) throw Gagal('Gagal mengirim email: ' + (h.respon || ''));
-    return { ok: true };
+  function kirimEmailTertunda(ctx) {
+    if (!ctx._email.length || !ctx.env.emailKirim) return;
+    ctx._email.forEach(function (m) { try { ctx.env.emailKirim(m); } catch (e) { } });
+    ctx._email = [];
   }
 
-  /* Blast per batch 10/20/50 */
-  function svcWaAudience(ctx, d) {
-    var rows = [], lihat = {};
-    if (d.sumber === 'manual') {
-      String(d.manual || '').split('\n').forEach(function (l) { var p = l.split('|'), hp = hp08(p[0]); if (!s(p[0])) return; rows.push({ kontak_id: '', nama: s(p[1]) || 'Bapak/Ibu', hp: hp, status_wa: '', opt_out: false }); });
-    } else {
-      crmDaftar(ctx).forEach(function (k) {
-        if (d.segmen && k.segmen !== d.segmen) return; if (d.tag && (',' + k.tag + ',').indexOf(',' + d.tag + ',') < 0) return; if (d.status_wa && k.status_wa !== d.status_wa) return;
-        if (d.ids && d.ids.length && d.ids.indexOf(k.kontak_id) < 0) return;
-        rows.push({ kontak_id: k.kontak_id, nama: k.nama, hp: k.no_wa, status_wa: k.status_wa, opt_out: k.opt_out === 'YA', info: jsonAman(k.info, {}) });
-      });
-    }
-    var r = { total: rows.length, valid: 0, tidakValid: 0, ganda: 0, optOut: 0, terdaftarWA: 0, tidakTerdaftarWA: 0 };
-    rows.forEach(function (x) {
-      x.valid = hpValid(x.hp); x.ganda = !!(x.valid && lihat[x.hp]); if (x.valid) lihat[x.hp] = 1;
-      if (!x.valid) r.tidakValid++; else if (x.ganda) r.ganda++; else r.valid++;
-      if (x.opt_out) r.optOut++; if (x.status_wa === 'Terdaftar') r.terdaftarWA++; if (x.status_wa === 'Tidak Terdaftar') r.tidakTerdaftarWA++;
+  /* Tautan Google Drive (berbagi/unduh/buka) → URL gambar langsung */
+  function urlGambarSlide(u) {
+    u = s(u);
+    var m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=|thumbnail\?id=)([-\w]{25,})/) || u.match(/docs\.google\.com\/uc\?(?:export=\w+&)?id=([-\w]{25,})/);
+    if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1920';
+    return u;
+  }
+  function validasiLogin(ctx, v) {
+    var o = salin(PENGATURAN_BAWAAN.login), f = {};
+    var daftar = (Array.isArray(v.slides) ? v.slides : []).map(urlGambarSlide).filter(Boolean);
+    if (daftar.length > LOGIN_MAKS_SLIDE) f.slides = 'Maksimal ' + LOGIN_MAKS_SLIDE + ' gambar';
+    daftar.forEach(function (u) {
+      var ok = /^https:\/\/[^\s"'<>]{8,600}$/.test(u) || (ctx.env.mode === 'demo' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)) || /^assets\/[\w\/.-]{3,120}$/.test(u);
+      if (!ok) f.slides = 'Alamat gambar harus diawali https:// (atau tautan Google Drive yang dibagikan publik).';
     });
-    return { rows: rows, ringkas: r, segmen: unik(crmDaftar(ctx).map(function (k) { return k.segmen; })), tag: unik([].concat.apply([], crmDaftar(ctx).map(function (k) { return s(k.tag).split(',').filter(Boolean); }))), wa_aktif: waAktif(ctx) };
-  }
-  function svcBlastBuat(ctx, d) {
-    if (!waAktif(ctx)) throw Gagal('Aktifkan WhatsApp (isi token Fonnte & nyalakan saklar) di Konfigurasi terlebih dahulu.');
-    var pesan = s(d.pesan), batch = num(d.ukuran_batch), jeda = s(d.jeda) || '5', f = {};
-    if (pesan.length < 5) f.pesan = 'Pesan minimal 5 karakter'; if ([10, 20, 50].indexOf(batch) < 0) f.ukuran_batch = 'Pilih 10/20/50'; if (!/^\d{1,3}(-\d{1,3})?$/.test(jeda)) f.jeda = 'Contoh: 5 atau 3-8';
-    if (Object.keys(f).length) throw Gagal('Periksa kembali blast.', 'VALIDATION', f);
-    var opt = {}; crmDaftar(ctx).forEach(function (k) { if (k.opt_out === 'YA') opt[hp08(k.no_wa)] = 1; });
-    var lihat = {}, list = [], dibuang = 0, inst = atur(ctx, 'identitas').nama_app, id = idBaru(ctx, 'BlastWA');
-    (d.penerima || []).forEach(function (p) { var hp = hp08(p.hp); if (!hpValid(hp) || lihat[hp] || opt[hp]) { dibuang++; return; } lihat[hp] = 1; list.push(barisAntrian(ctx, 'WA', hp62(hp), p.nama, '', isiTemplate(pesan, gabung({ nama: p.nama || 'Bapak/Ibu', institusi: inst }, p.vars || {})), 'BLAST', '', id)); });
-    if (!list.length) throw Gagal('Tidak ada penerima valid.');
-    if (list.length > 5000) throw Gagal('Maksimal 5.000 penerima per blast.');
-    tambah(ctx, 'AntrianNotif', list);
-    tambah(ctx, 'BlastWA', [{ blast_id: id, judul: s(d.judul).slice(0, 80) || 'Blast ' + tglIndo(ctx.hariIni), pesan: pesan, sasaran: s(d.sasaran).slice(0, 120), total: list.length, terkirim: 0, gagal: 0, ukuran_batch: batch, jeda: jeda, status: 'Berjalan', dibuat_oleh: oleh(ctx), dibuat_at: kini(ctx), selesai_at: '' }]);
-    audit(ctx, 'BLAST_BUAT', 'BlastWA:' + id, '', { total: list.length, batch: batch, dibuang: dibuang });
-    return { blast_id: id, total: list.length, dibuang: dibuang, batch: Math.ceil(list.length / batch) };
-  }
-  function svcBlastList(ctx) {
-    return { rows: urut(semua(ctx, 'BlastWA'), function (b) { return b.dibuat_at; }, true).slice(0, 100).map(function (b) { var o = salin(b); o.persen = num(b.total) ? Math.round((num(b.terkirim) + num(b.gagal)) / num(b.total) * 100) : 0; o.sisa = Math.max(0, num(b.total) - num(b.terkirim) - num(b.gagal)); return o; }) };
-  }
-  function svcBlastStop(ctx, d) {
-    var b = wajibAda(ctx, 'BlastWA', d.blast_id, 'Blast');
-    var sisa = semua(ctx, 'AntrianNotif', { ekor: 6000 }).filter(function (r) { return r.blast_id === b.blast_id && r.status === 'Antri'; });
-    ubah(ctx, 'AntrianNotif', sisa.map(function (r) { return { antrian_id: r.antrian_id, status: 'Batal' }; }));
-    ubah(ctx, 'BlastWA', [{ blast_id: b.blast_id, status: 'Dihentikan', selesai_at: kini(ctx) }]);
-    audit(ctx, 'BLAST_STOP', 'BlastWA:' + b.blast_id, '', { dibatalkan: sisa.length });
-    return { dibatalkan: sisa.length };
-  }
-  function svcWaValidate(ctx, d) {
-    var nomor = unik((d.nomor || []).map(hp08).filter(hpValid)).slice(0, 50);
-    if (!nomor.length) return { hasil: {} };
-    if (!ctx.env.rahasia('FONNTE_TOKEN') || !ctx.env.waValidasi) throw Gagal('Deteksi nomor WA butuh token Fonnte.');
-    var h = ctx.env.waValidasi(nomor.map(hp62));
-    if (!h.ok) throw Gagal(h.pesan || 'Fitur validasi tidak tersedia di paket Fonnte Anda.');
-    var peta62 = {}; (h.terdaftar || []).forEach(function (x) { peta62[hp08(x)] = 'Terdaftar'; }); (h.tidak || []).forEach(function (x) { peta62[hp08(x)] = 'Tidak Terdaftar'; });
-    ubah(ctx, 'CRM_Kontak', semua(ctx, 'CRM_Kontak').filter(function (k) { return peta62[hp08(k.no_wa)]; }).map(function (k) { return { kontak_id: k.kontak_id, status_wa: peta62[hp08(k.no_wa)], cek_wa_at: kini(ctx) }; }));
-    return { hasil: peta62 };
-  }
-
-  /* ---------- 20. CRM Kontak (Nama · Email · WhatsApp) ---------- */
-  function sumberKontak(ctx) {
-    var out = [], ortu = {};
-    semua(ctx, 'Siswa').forEach(function (sw) {
-      var hp = hp08(sw.kontak_ortu); if (!hp && !sw.email_ortu) return;
-      var k = hp || s(sw.email_ortu).toLowerCase(), e = enrTerbaruSiswa(ctx, sw.siswa_id), st = e ? statusEfektif(ctx, e).status : 'Tanpa paket';
-      var o = ortu[k] = ortu[k] || { sumber: 'ortu', ref_id: k, nama: sw.nama_ortu || ('Ortu ' + sw.nama), email: s(sw.email_ortu).toLowerCase(), no_wa: hp, segmen: 'Orang Tua', info: { anak: [], status: [] } };
-      o.info.anak.push(sw.nama); o.info.status.push(st);
-    });
-    Object.keys(ortu).forEach(function (k) { var o = ortu[k]; o.info = { anak: o.info.anak.join(', '), status: unik(o.info.status).join(', ') }; out.push(o); });
-    semua(ctx, 'Pendaftaran_Masuk').forEach(function (r) { if (r.status === 'Diverifikasi') return; var dd = jsonAman(r.data_json, {}); out.push({ sumber: 'calon', ref_id: r.id, nama: dd.nama_ortu || dd.nama, email: s(dd.email).toLowerCase(), no_wa: hp08(dd.kontak), segmen: 'Calon Siswa', info: { calon: dd.nama, status: r.status } }); });
-    semua(ctx, 'Pelatih').forEach(function (c) { if (!c.kontak) return; out.push({ sumber: 'pelatih', ref_id: c.coach_id, nama: c.nama, email: '', no_wa: hp08(c.kontak), segmen: 'Pelatih', info: { status: c.aktif === 'T' ? 'Nonaktif' : 'Aktif' } }); });
-    return out;
-  }
-  function crmSync(ctx) {
-    var lama = semua(ctx, 'CRM_Kontak'), idx = {}, baru = [], ubahR = [], dariSumber = {};
-    lama.forEach(function (k) { idx[k.sumber + ':' + k.ref_id] = k; });
-    sumberKontak(ctx).forEach(function (x) {
-      var key = x.sumber + ':' + x.ref_id, k = idx[key]; dariSumber[key] = 1;
-      var data = { nama: x.nama, email: x.email, no_wa: x.no_wa, segmen: x.segmen, email_valid: x.email ? (emailValid(x.email) ? 'YA' : 'TIDAK') : '', info: JSON.stringify(x.info), diperbarui_at: kini(ctx) };
-      if (!k) baru.push(gabung({ kontak_id: idBaru(ctx, 'CRM_Kontak') + ctx.env.acak(2).toUpperCase(), sumber: x.sumber, ref_id: x.ref_id, tag: '', status_wa: '', cek_wa_at: '', opt_out: 'TIDAK', catatan: '', jumlah_pesan: 0, terakhir_dihubungi: '', dibuat_at: kini(ctx) }, data));
-      else if (['nama', 'email', 'no_wa', 'info', 'segmen'].some(function (f) { return String(k[f]) !== String(data[f]); })) { if (hp08(k.no_wa) !== x.no_wa) { data.status_wa = ''; data.cek_wa_at = ''; } data.kontak_id = k.kontak_id; ubahR.push(data); }
-    });
-    tambah(ctx, 'CRM_Kontak', baru); ubah(ctx, 'CRM_Kontak', ubahR);
-    ctx._crmSync = true;
-    return { ditambah: baru.length, diperbarui: ubahR.length };
-  }
-  function crmDaftar(ctx) { if (!ctx._crmSync) crmSync(ctx); return semua(ctx, 'CRM_Kontak').filter(function (k) { return s(k.tag).indexOf('merged→') < 0; }); }
-  function crmUpsert(ctx) { try { crmSync(ctx); } catch (e) { } }
-  function crmUpsertSiswaDari(ctx) { try { crmSync(ctx); } catch (e) { } }
-  function crmCatatKirim(ctx, tujuan) {
-    if (!tujuan.length) return; var hit = {}; tujuan.forEach(function (t) { var k = hp08(t) || s(t).toLowerCase(); hit[k] = (hit[k] || 0) + 1; });
-    ubah(ctx, 'CRM_Kontak', semua(ctx, 'CRM_Kontak').filter(function (k) { return hit[hp08(k.no_wa)] || hit[s(k.email).toLowerCase()]; }).map(function (k) { return { kontak_id: k.kontak_id, jumlah_pesan: num(k.jumlah_pesan) + (hit[hp08(k.no_wa)] || hit[s(k.email).toLowerCase()] || 0), terakhir_dihubungi: kini(ctx) }; }));
-  }
-  function masalahKontak(k, gandaWA) { var m = []; if (!hpValid(k.no_wa) && k.email_valid !== 'YA') m.push('Tidak bisa dihubungi'); else if (!hpValid(k.no_wa)) m.push('Tanpa WA'); if (k.email && k.email_valid === 'TIDAK') m.push('Email tidak valid'); if (gandaWA[hp08(k.no_wa)] > 1) m.push('Duplikat'); return m; }
-  function svcCrmList(ctx, d) {
-    var semuaK = crmDaftar(ctx), q = s(d.cari).toLowerCase(), ganda = {};
-    semuaK.forEach(function (k) { var h = hp08(k.no_wa); if (h) ganda[h] = (ganda[h] || 0) + 1; });
-    var stat = { total: semuaK.length, wa_valid: 0, terdaftar: 0, email_valid: 0, belum_cek: 0, opt_out: 0, duplikat: 0, tak_terjangkau: 0, baru7: 0 }, segmen = {};
-    semuaK.forEach(function (k) {
-      if (hpValid(k.no_wa)) stat.wa_valid++; if (k.status_wa === 'Terdaftar') stat.terdaftar++; if (k.email_valid === 'YA') stat.email_valid++;
-      if (hpValid(k.no_wa) && !k.status_wa) stat.belum_cek++; if (k.opt_out === 'YA') stat.opt_out++; if (ganda[hp08(k.no_wa)] > 1) stat.duplikat++;
-      if (!hpValid(k.no_wa) && k.email_valid !== 'YA') stat.tak_terjangkau++; if (msDariWaktu(k.dibuat_at) > ctx.now - 7 * 864e5) stat.baru7++;
-      segmen[k.segmen] = (segmen[k.segmen] || 0) + 1;
-    });
-    var rows = semuaK.filter(function (k) {
-      if (q && (k.nama + ' ' + k.email + ' ' + k.no_wa + ' ' + k.info).toLowerCase().indexOf(q) < 0) return false;
-      if (d.segmen && k.segmen !== d.segmen) return false; if (d.tag && (',' + k.tag + ',').indexOf(',' + d.tag + ',') < 0) return false;
-      if (d.status_wa === 'belum' ? k.status_wa : (d.status_wa && k.status_wa !== d.status_wa)) return false;
-      if (d.opt_out && k.opt_out !== 'YA') return false; if (d.duplikat && !(ganda[hp08(k.no_wa)] > 1)) return false;
-      if (d.masalah && !masalahKontak(k, ganda).length) return false;
-      return true;
-    });
-    rows = urut(rows, function (k) { return k.nama.toLowerCase(); });
-    var hal = Math.max(1, num(d.halaman) || 1), per = 50;
-    return { stat: stat, segmen: segmen, tag: unik([].concat.apply([], semuaK.map(function (k) { return s(k.tag).split(',').filter(Boolean); }))), total: rows.length, halaman: hal, per: per,
-      rows: rows.slice((hal - 1) * per, hal * per).map(function (k) { var o = salin(k); o.info = jsonAman(k.info, {}); o.masalah = masalahKontak(k, ganda); return o; }), sinkron_at: kini(ctx), wa_aktif: waAktif(ctx), boleh_blast: punya(ctx, 'wa.blast') };
-  }
-  function svcCrmDetail(ctx, d) {
-    var k = wajibAda(ctx, 'CRM_Kontak', d.kontak_id, 'Kontak'), hp = hp62(k.no_wa), em = s(k.email).toLowerCase();
-    var pesan = semua(ctx, 'AntrianNotif', { ekor: 3000 }).filter(function (r) { return (hp && r.tujuan === hp) || (em && s(r.tujuan).toLowerCase() === em); }).slice(-50).map(function (r) { return { jenis: 'pesan', kanal: r.kanal, waktu: r.dikirim_at || r.dibuat_at, ringkasan: (r.event === 'BLAST' ? 'Blast · ' : r.event + ' · ') + s(r.pesan).slice(0, 140), status: r.status }; });
-    var inter = semua(ctx, 'CRM_Interaksi', { ekor: 3000 }).filter(function (i) { return i.kontak_id === k.kontak_id; }).map(function (i) { return { jenis: 'catatan', kanal: i.kanal, waktu: i.tanggal, ringkasan: i.ringkasan, oleh: namaPengguna(ctx, i.oleh) }; });
-    var o = salin(k); o.info = jsonAman(k.info, {});
-    return { kontak: o, timeline: urut(pesan.concat(inter), function (x) { return x.waktu; }, true) };
-  }
-  function svcCrmSave(ctx, d) {
-    var k = wajibAda(ctx, 'CRM_Kontak', d.kontak_id, 'Kontak'), o = { kontak_id: k.kontak_id, tag: unik(String(d.tag || '').split(',').map(s).filter(Boolean)).join(','), catatan: s(d.catatan).slice(0, 1000), opt_out: d.opt_out ? 'YA' : 'TIDAK' };
-    if (k.sumber === 'manual') { o.nama = s(d.nama).slice(0, 80) || k.nama; o.email = s(d.email).toLowerCase(); o.no_wa = hp08(d.no_wa); o.email_valid = o.email ? (emailValid(o.email) ? 'YA' : 'TIDAK') : ''; if (o.no_wa !== hp08(k.no_wa)) { o.status_wa = ''; o.cek_wa_at = ''; } }
-    ubah(ctx, 'CRM_Kontak', [o]);
-    return { kontak_id: k.kontak_id };
-  }
-  function svcCrmBulk(ctx, d) {
-    var ids = d.ids || [], set = {}; ids.forEach(function (i) { set[i] = 1; });
-    var rows = semua(ctx, 'CRM_Kontak').filter(function (k) { return set[k.kontak_id]; }), nilai = s(d.nilai), out = [];
-    rows.forEach(function (k) {
-      var tag = s(k.tag).split(',').filter(Boolean), o = { kontak_id: k.kontak_id };
-      if (d.aksi === 'tag') o.tag = unik(tag.concat(nilai ? [nilai] : [])).join(',');
-      else if (d.aksi === 'untag') o.tag = tag.filter(function (t) { return t !== nilai; }).join(',');
-      else if (d.aksi === 'optout') o.opt_out = 'YA'; else if (d.aksi === 'optin') o.opt_out = 'TIDAK';
-      else if (d.aksi === 'hapusManual') { if (k.sumber !== 'manual') return; o.tag = 'merged→dihapus'; }
-      else throw Gagal('Aksi tidak dikenal.');
-      out.push(o);
-    });
-    ubah(ctx, 'CRM_Kontak', out); audit(ctx, 'CRM_BULK', d.aksi, '', { jumlah: out.length, nilai: nilai });
-    return { diubah: out.length };
-  }
-  function svcCrmInteraksi(ctx, d) {
-    var k = wajibAda(ctx, 'CRM_Kontak', d.kontak_id, 'Kontak'); if (s(d.ringkasan).length < 3) throw Gagal('Isi ringkasan interaksi.', 'VALIDATION', { ringkasan: 'Wajib' });
-    tambah(ctx, 'CRM_Interaksi', [{ interaksi_id: idBaru(ctx, 'CRM_Interaksi'), kontak_id: k.kontak_id, kanal: ['Telepon', 'WA Manual', 'Kunjungan', 'Catatan'].indexOf(d.kanal) >= 0 ? d.kanal : 'Catatan', arah: 'Keluar', ringkasan: s(d.ringkasan).slice(0, 500), ref_id: '', oleh: oleh(ctx), tanggal: kini(ctx) }]);
-    ubah(ctx, 'CRM_Kontak', [{ kontak_id: k.kontak_id, terakhir_dihubungi: kini(ctx) }]);
-    return { ok: true };
-  }
-  function svcCrmImport(ctx, d) {
-    var ada = {}; semua(ctx, 'CRM_Kontak').forEach(function (k) { ada[k.sumber + ':' + k.ref_id] = 1; });
-    var baru = [], lewat = 0;
-    (d.rows || []).slice(0, 2000).forEach(function (r) {
-      var hp = hp08(r.wa), em = s(r.email).toLowerCase(), ref = hp || em; if (!ref || ada['manual:' + ref]) { lewat++; return; } ada['manual:' + ref] = 1;
-      baru.push({ kontak_id: idBaru(ctx, 'CRM_Kontak') + ctx.env.acak(2).toUpperCase(), nama: s(r.nama).slice(0, 80) || 'Tanpa nama', email: em, no_wa: hp, segmen: s(r.segmen).slice(0, 30) || 'Manual', sumber: 'manual', ref_id: ref, tag: s(r.tag), status_wa: '', cek_wa_at: '', email_valid: em ? (emailValid(em) ? 'YA' : 'TIDAK') : '', opt_out: 'TIDAK', catatan: '', jumlah_pesan: 0, terakhir_dihubungi: '', info: '{}', dibuat_at: kini(ctx), diperbarui_at: kini(ctx) });
-    });
-    tambah(ctx, 'CRM_Kontak', baru); audit(ctx, 'CRM_IMPORT', 'CRM_Kontak', '', { ditambah: baru.length, dilewati: lewat });
-    return { ditambah: baru.length, dilewati: lewat };
-  }
-  function svcCrmSync(ctx) { var r = crmSync(ctx); return r; }
-  function svcCrmEkspor(ctx) {
-    audit(ctx, 'CRM_EKSPOR', 'CRM_Kontak', '', { jumlah: crmDaftar(ctx).length });
-    return { rows: crmDaftar(ctx).map(function (k) { return { Nama: k.nama, WhatsApp: k.no_wa, Email: k.email, Segmen: k.segmen, Tag: k.tag, 'Status WA': k.status_wa, 'Opt-out': k.opt_out, 'Jumlah Pesan': num(k.jumlah_pesan), 'Terakhir Dihubungi': k.terakhir_dihubungi }; }) };
-  }
-
-  /* ---------- 21. Mesin dokumen (kwitansi, slip honor, laporan kas, sertifikat) ---------- */
-  var DE_JENIS = {
-    KWITANSI: { nama: 'Kwitansi Pembayaran', engine: 'docs', format: 'KW/{URUT}/{BULAN}/{TAHUN}', wajibSetuju: false },
-    SLIP_HONOR: { nama: 'Slip Honor Pelatih', engine: 'docs', format: 'SH/{URUT}/{BULAN}/{TAHUN}', wajibSetuju: true },
-    LAPORAN_KAS: { nama: 'Laporan Kas Bulanan', engine: 'sheets', format: 'LK/{URUT}/{TAHUN}', wajibSetuju: true },
-    SERTIFIKAT: { nama: 'Sertifikat Siswa', engine: 'slides', format: 'SRT/{URUT}/{TAHUN}', wajibSetuju: true }
-  };
-  var ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-  /* Fungsi murni placeholder {{...}} (dipakai renderer GAS & pratinjau demo) */
-  var DE_POLA = /\{\{\s*([#?\/]?)\s*([A-Za-z][A-Za-z0-9_.]*)\s*(?:\|\s*([^}]*?))?\s*\}\}/g;
-  function dePindaiTeks(teks) { var h = [], m; DE_POLA.lastIndex = 0; while ((m = DE_POLA.exec(String(teks || '')))) h.push({ jenis: m[1] || '', kunci: m[2].toUpperCase(), pengubah: (m[3] || '').trim(), mentah: m[0] }); return h; }
-  function deTerbilang(n) {
-    n = Math.floor(Math.abs(num(n)));
-    var a = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas'];
-    function t(x) {
-      if (x < 12) return a[x]; if (x < 20) return t(x - 10) + ' belas'; if (x < 100) return t(Math.floor(x / 10)) + ' puluh ' + t(x % 10);
-      if (x < 200) return 'seratus ' + t(x - 100); if (x < 1000) return t(Math.floor(x / 100)) + ' ratus ' + t(x % 100);
-      if (x < 2000) return 'seribu ' + t(x - 1000); if (x < 1e6) return t(Math.floor(x / 1000)) + ' ribu ' + t(x % 1000);
-      if (x < 1e9) return t(Math.floor(x / 1e6)) + ' juta ' + t(x % 1e6); if (x < 1e12) return t(Math.floor(x / 1e9)) + ' miliar ' + t(x % 1e9);
-      return t(Math.floor(x / 1e12)) + ' triliun ' + t(x % 1e12);
-    }
-    return n === 0 ? 'nol' : t(n).replace(/\s+/g, ' ').trim();
-  }
-  function dePengubah(nilai, pengubah) {
-    var v = nilai == null ? '' : nilai;
-    String(pengubah || '').split('|').forEach(function (p) {
-      p = p.trim(); if (!p) return; var nm = p.split(':')[0].toLowerCase(), arg = p.slice(nm.length + 1);
-      if (nm === 'bawaan' && String(v) === '') v = arg; else if (nm === 'kapital') v = String(v).toUpperCase(); else if (nm === 'kecil') v = String(v).toLowerCase();
-      else if (nm === 'judul') v = String(v).toLowerCase().replace(/\b\w/g, function (h) { return h.toUpperCase(); });
-      else if (nm === 'rupiah') v = rupiah(v); else if (nm === 'ribuan') v = String(Math.round(num(v))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-      else if (nm === 'terbilang') v = deTerbilang(v) + (arg === 'rupiah' ? ' rupiah' : ''); else if (nm === 'tanggal') v = tglIndo(String(v).slice(0, 10));
-    });
-    return String(v);
-  }
-  var DE_SLOT = /^(NAMA_PEJABAT|JABATAN|TTD|QR)(?:_(\d+))?$/, DE_SISTEM = ['NOMOR', 'TANGGAL', 'TAHUN', 'BULAN', 'BULAN_ROMAWI', 'QR', 'KODE_VERIFIKASI', 'URL_VERIFIKASI'];
-  function deSusunSkema(penanda) {
-    var bidang = [], lihat = {}, slot = {};
-    penanda.forEach(function (p) {
-      if (p.jenis === '/') return;
-      var titik = p.kunci.indexOf('.');
-      if (titik > 0) { var ind = p.kunci.slice(0, titik), sub = p.kunci.slice(titik + 1), bk = bidang.filter(function (b) { return b.kunci === ind; })[0]; if (!bk) { bk = { kunci: ind, tipe: 'daftar', kolom: [] }; bidang.push(bk); lihat[ind] = 1; } if (bk.kolom.indexOf(sub) < 0) bk.kolom.push(sub); return; }
-      if (p.jenis === '#') { if (!lihat[p.kunci]) { lihat[p.kunci] = 1; bidang.push({ kunci: p.kunci, tipe: 'daftar', kolom: [] }); } return; }
-      var sm = DE_SLOT.exec(p.kunci); if (sm) { slot[Number(sm[2] || 1)] = 1; return; }
-      if (DE_SISTEM.indexOf(p.kunci) >= 0 || /^INSTITUSI_/.test(p.kunci) || lihat[p.kunci]) return;
-      lihat[p.kunci] = 1; bidang.push({ kunci: p.kunci, tipe: /(NOMINAL|TOTAL|TARIF|JUMLAH|MASUK|KELUAR|SALDO)/.test(p.kunci) ? 'angka' : /^TGL_|TANGGAL_/.test(p.kunci) ? 'tanggal' : 'teks' });
-    });
-    return { bidang: bidang, slot: Object.keys(slot).map(Number).sort() };
-  }
-
-  function templateDok(ctx, kode) { var t = cari(ctx, 'DE_Template', kode); return t && t.aktif !== 'T' ? t : null; }
-  function pejabatOwner(ctx) {
-    var u = semua(ctx, 'Pengguna').filter(function (x) { return x.peran === 'owner' && x.aktif !== 'T'; })[0];
-    var pj = u ? cari(ctx, 'DE_Pejabat', u.user_id) : null;
-    return { user_id: u ? u.user_id : '', nama: pj && pj.nama ? pj.nama : (u ? u.nama : 'Owner'), jabatan: pj && pj.jabatan ? pj.jabatan : 'Owner', pin_ada: !!(pj && pj.pin_hash) };
-  }
-  function isiDokumen(ctx, jenis, ref) {
-    var id = atur(ctx, 'identitas'), rek = configTerkunci(ctx), dasar = { INSTITUSI_NAMA: id.nama_app, INSTITUSI_ALAMAT: id.alamat || '', INSTITUSI_KONTAK: id.kontak_admin || '' };
-    if (jenis === 'KWITANSI') {
-      var t = wajibAda(ctx, 'Transaksi', ref.trx_id, 'Transaksi'); if (t.tipe !== 'Pemasukan') throw Gagal('Kwitansi hanya untuk pemasukan.');
-      var e = t.enr_id ? ringkasEnr(ctx, cari(ctx, 'Paket_Aktif', t.enr_id)) : null;
-      return { judul: 'Kwitansi ' + t.nama + ' · ' + rupiah(t.nominal), ringkas: 'Pembayaran ' + (t.penjelasan || '') + ' sebesar ' + rupiah(t.nominal), isian: gabung(dasar, { NAMA_PEMBAYAR: t.nama, PERUNTUKAN: t.penjelasan || (cari(ctx, 'Kategori_Kas', t.kategori_id) || {}).nama || '', NOMINAL: num(t.nominal), TANGGAL_BAYAR: t.tanggal,
-        PESERTA: e ? e.peserta.map(function (p) { return p.nama; }).join(' & ') : '-', PAKET: e ? e.paket : '-', KATEGORI: e ? e.kategori : '-', METODE: rek.bank ? 'Transfer ' + rek.bank + ' a.n. ' + rek.atas_nama : 'Tunai', ID_TRANSAKSI: t.trx_id }) };
-    }
-    if (jenis === 'SLIP_HONOR') {
-      if (!punya(ctx, 'honor.rekap_lihat')) throw Gagal('Slip honor butuh izin rekap honor.', 'FORBIDDEN');
-      var bulan = bulanValid(ref.bulan) ? ref.bulan : geserBulan(bulanDari(ctx.hariIni), -1), h = rekapHonor(ctx, bulan, ref.coach_id)[0];
-      if (!h) throw Gagal('Tidak ada sesi dihitung untuk pelatih ini pada ' + namaBulan(bulan) + '.');
-      return { judul: 'Slip Honor ' + h.nama + ' · ' + namaBulan(bulan), ringkas: 'Slip honor ' + namaBulan(bulan) + ' · ' + h.total_sesi + ' sesi', isian: gabung(dasar, { NAMA_PELATIH: h.nama, LISENSI: h.lisensi || '-', PERIODE: namaBulan(bulan), TOTAL_SESI: h.total_sesi, TOTAL: h.total,
-        RINCIAN: h.kategori.map(function (k) { return { KATEGORI: k.kategori, SESI: k.sesi, TARIF: k.tarif, SUBTOTAL: k.subtotal }; }) }) };
-    }
-    if (jenis === 'LAPORAN_KAS') {
-      wajibIzin(ctx, 'kas.lihat');
-      var bl = bulanValid(ref.bulan) ? ref.bulan : geserBulan(bulanDari(ctx.hariIni), -1), k = svcKasList(ctx, { bulan: bl, status: 'aktif' });
-      return { judul: 'Laporan Kas ' + namaBulan(bl), ringkas: 'Laporan kas ' + namaBulan(bl) + ' · ' + k.rows.length + ' transaksi', isian: gabung(dasar, { PERIODE: namaBulan(bl), MASUK: k.ringkas.masuk, KELUAR: k.ringkas.keluar, SALDO_AWAL: k.ringkas.saldo_awal, SALDO_AKHIR: k.ringkas.saldo_akhir,
-        TRX: k.rows.slice().reverse().map(function (x) { return { TANGGAL: x.tanggal, KATEGORI: x.kategori, URAIAN: x.nama + (x.penjelasan ? ' — ' + x.penjelasan : ''), MASUK: x.tipe === 'Pemasukan' ? num(x.nominal) : '', KELUAR: x.tipe === 'Pengeluaran' ? num(x.nominal) : '' }; }) }) };
-    }
-    if (jenis === 'SERTIFIKAT') {
-      var en = wajibAda(ctx, 'Paket_Aktif', ref.enr_id, 'Paket'), r = ringkasEnr(ctx, en), sw = wajibAda(ctx, 'Siswa', ref.siswa_id || (r.peserta[0] || {}).siswa_id, 'Siswa');
-      var hadir = riwayatEnr(ctx, en.enr_id).filter(function (a) { return a.peserta.some(function (p) { return p.siswa_id === sw.siswa_id && p.status === 'Hadir'; }); });
-      return { judul: 'Sertifikat ' + sw.nama + ' · ' + r.paket, ringkas: 'Sertifikat program ' + r.paket + ' (' + hadir.length + ' sesi hadir)', isian: gabung(dasar, { NAMA_SISWA: sw.nama, PAKET: r.paket, KATEGORI: r.kategori, JUMLAH_HADIR: hadir.length, PELATIH: r.pelatih, KOLAM: r.kolam,
-        PERIODE: tglIndo(r.tgl_mulai) + (hadir.length ? ' – ' + tglIndo(hadir[0].tanggal) : ''), PREDIKAT: hadir.length >= r.sesi_total ? 'Menyelesaikan program dengan kehadiran penuh' : 'Telah mengikuti program latihan renang' }) };
-    }
-    throw Gagal('Jenis dokumen tidak dikenal.');
-  }
-  function nomorDok(ctx, kode) {
-    var dj = DE_JENIS[kode], r = cari(ctx, 'DE_Nomor', kode), b = bagWIB(ctx.now), th = b.y, urutan = (r && num(r.tahun) === th ? num(r.urut) : 0) + 1;
-    var row = { kode: kode, format: r ? r.format : dj.format, tahun: th, urut: urutan };
-    if (r) ubah(ctx, 'DE_Nomor', [row]); else tambah(ctx, 'DE_Nomor', [row]);
-    return String(row.format || dj.format).replace('{URUT}', ('000' + urutan).slice(-4)).replace('{BULAN}', ROMAWI[b.m - 1]).replace('{TAHUN}', th);
-  }
-  function terbitkan(ctx, dok, metode) {
-    var pj = pejabatOwner(ctx), kode = ctx.env.acak(14).toUpperCase();
-    var o = { id: dok.id, status: 'TERBIT', nomor: nomorDok(ctx, dok.template_kode), kode_verifikasi: kode, terbit: kini(ctx),
-      penandatangan: JSON.stringify([{ slot: 1, nama: pj.nama, jabatan: pj.jabatan, metode: metode, waktu: kini(ctx), oleh: ctx.me ? ctx.me.nama : 'Sistem' }]) };
-    ubah(ctx, 'DE_Dokumen', [o]);
-    tambah(ctx, 'DE_Antrean', [{ job_id: idBaru(ctx, 'DE_Antrean') + ctx.env.acak(2).toUpperCase(), jenis: 'render', dok_id: dok.id, status: 'MENUNGGU', galat: '', percobaan: 0, dibuat: kini(ctx), selesai: '' }]);
-    if (dok.template_kode === 'KWITANSI') {
-      var isi = jsonAman(dok.data_isian, {}), t = cari(ctx, 'Transaksi', isi.ID_TRANSAKSI), e = t && t.enr_id ? pesertaDari(ctx, t.enr_id)[0] : null;
-      if (e) kirimNotif(ctx, 'KWITANSI_TERBIT', { nama: e.nama_ortu, hp: e.kontak_ortu, email: e.email_ortu }, { nomor: o.nomor, nominal: rupiah(isi.NOMINAL), link: (notifCfg(ctx).app_url || '') + '#/v/' + kode }, dok.id);
-    }
+    o.slides = daftar.slice(0, LOGIN_MAKS_SLIDE);
+    o.headline = s(v.headline).slice(0, 90); if (!o.headline) f.headline = 'Judul wajib diisi';
+    o.subjudul = s(v.subjudul).slice(0, 180);
+    var d = Math.round(num(v.durasi));
+    if (d < 3000 || d > 15000) f.durasi = 'Antara 3.000 dan 15.000 ms'; else o.durasi = d;
+    if (Object.keys(f).length) throw Gagal('Periksa kembali pengaturan halaman masuk.', 'VALIDATION', f);
     return o;
   }
-  function buatDokumen(ctx, jenis, ref, otomatis) {
-    var dj = DE_JENIS[jenis], tpl = cari(ctx, 'DE_Template', jenis); if (!dj) throw Gagal('Jenis dokumen tidak dikenal.');
-    if (tpl && tpl.aktif === 'T') throw Gagal('Template ' + dj.nama + ' sedang nonaktif.');
-    var isi = isiDokumen(ctx, jenis, ref || {}), slot = tpl ? jsonAman(tpl.slot_ttd, []) : [], wajib = slot.length ? slot.some(function (x) { return x.wajibSetuju; }) : dj.wajibSetuju;
-    var dok = { id: idBaru(ctx, 'DE_Dokumen'), template_kode: jenis, versi: tpl ? num(tpl.versi) : 1, nomor: '', judul: isi.judul, ref: JSON.stringify(ref || {}), status: wajib ? 'MENUNGGU_TTD' : 'DRAF', data_isian: JSON.stringify(gabung(isi.isian, { _RINGKAS: isi.ringkas })), penandatangan: '[]', kode_verifikasi: '', hash_pdf: '', berkas: '', dibuat: kini(ctx), terbit: '', oleh: oleh(ctx), alasan_tarik: '' };
-    tambah(ctx, 'DE_Dokumen', [dok]);
-    if (!wajib) terbitkan(ctx, dok, otomatis ? 'SISTEM' : 'OPERATOR');
-    return cari(ctx, 'DE_Dokumen', dok.id);
-  }
-  function dokOtomatis(ctx, jenis, ref) { try { if (!templateDok(ctx, jenis)) return null; return buatDokumen(ctx, jenis, ref, true); } catch (e) { return null; } }
-  function ringkasDok(ctx, d) {
-    var o = { id: d.id, jenis: d.template_kode, nama_jenis: (DE_JENIS[d.template_kode] || {}).nama, nomor: d.nomor, judul: d.judul, status: d.status, kode_verifikasi: d.kode_verifikasi, dibuat: d.dibuat, terbit: d.terbit, oleh: namaPengguna(ctx, d.oleh), berkas: jsonAman(d.berkas, null), penandatangan: jsonAman(d.penandatangan, []), alasan_tarik: d.alasan_tarik, hash_pdf: d.hash_pdf };
-    var job = semua(ctx, 'DE_Antrean').filter(function (j) { return j.dok_id === d.id; }).slice(-1)[0]; o.render = job ? job.status : '';
-    return o;
-  }
-  function svcDokAmbil(ctx, d) {
-    var owner = ctx.me.peran === 'owner'; if (!owner && !punya(ctx, 'dokumen.kelola')) throw Gagal('Tidak diizinkan.', 'FORBIDDEN');
-    var rows = urut(semua(ctx, 'DE_Dokumen'), function (x) { return x.dibuat; }, true).filter(function (x) { return (!d.jenis || x.template_kode === d.jenis) && (!d.status || x.status === d.status); });
-    var bisaJenis = { KWITANSI: punya(ctx, 'kas.lihat'), SLIP_HONOR: punya(ctx, 'honor.rekap_lihat'), LAPORAN_KAS: punya(ctx, 'kas.lihat'), SERTIFIKAT: true };
-    return { dokumen: rows.slice(0, 150).map(function (x) { return ringkasDok(ctx, x); }), jenis: Object.keys(DE_JENIS).map(function (k) { var t = cari(ctx, 'DE_Template', k); return { kode: k, nama: DE_JENIS[k].nama, engine: DE_JENIS[k].engine, ada: !!t, aktif: t ? t.aktif !== 'T' : false, file_id: t ? t.file_id : '', bidang: t ? jsonAman(t.bidang, []) : [], versi: t ? num(t.versi) : 0, wajibSetuju: t ? jsonAman(t.slot_ttd, []).some(function (s0) { return s0.wajibSetuju; }) : DE_JENIS[k].wajibSetuju, boleh: bisaJenis[k] }; }),
-      menunggu: rows.filter(function (x) { return x.status === 'MENUNGGU_TTD'; }).length, pejabat: pejabatOwner(ctx), owner: owner,
-      sumber: { pelatih: aktif(semua(ctx, 'Pelatih')).map(function (c) { return { coach_id: c.coach_id, nama: c.nama }; }),
-        trx: punya(ctx, 'kas.lihat') ? urut(trxAktif(ctx).filter(function (t) { return t.tipe === 'Pemasukan'; }), function (t) { return t.dibuat_at; }, true).slice(0, 40).map(function (t) { return { trx_id: t.trx_id, label: tglIndo(t.tanggal) + ' · ' + t.nama + ' · ' + rupiah(t.nominal) }; }) : [],
-        enr: semua(ctx, 'Paket_Aktif').filter(function (e) { return e.status !== 'Aktif' || num(e.sesi_terpakai) > 0; }).slice(-60).reverse().map(function (e) { var r = ringkasEnr(ctx, e); return { enr_id: e.enr_id, label: r.peserta.map(function (p) { return p.nama; }).join(' & ') + ' · ' + r.paket + ' (' + r.sesi_terpakai + '/' + r.sesi_total + ')', peserta: r.peserta }; }) } };
-  }
-  function svcDokBuat(ctx, d) {
-    if (ctx.me.peran !== 'owner') wajibIzin(ctx, 'dokumen.kelola');
-    var list = Array.isArray(d.refs) ? d.refs : [d.ref || {}], hasil = [];
-    if (list.length > 100) throw Gagal('Maksimal 100 dokumen sekaligus.');
-    list.forEach(function (r) { var x = buatDokumen(ctx, d.jenis, r, false); hasil.push(ringkasDok(ctx, x)); audit(ctx, 'DOKUMEN_BUAT', 'DE_Dokumen:' + x.id, '', x.judul); });
-    return { dokumen: hasil };
-  }
-  function cekPinPejabat(ctx, pin) {
-    var pj = cari(ctx, 'DE_Pejabat', ctx.me.user_id);
-    if (!pj || !pj.pin_hash) throw Gagal('Atur PIN tanda tangan Anda terlebih dahulu.', 'NO_PIN');
-    var kunciC = 'de_pin_' + ctx.me.user_id, gagal = num(ctx.env.cacheGet ? ctx.env.cacheGet(kunciC) : 0);
-    if (gagal >= 5) throw Gagal('PIN terkunci 15 menit karena 5 kali salah.', 'LOCKED');
-    if (!samaAman(hashRahasia(ctx, String(pin || ''), pj.pin_salt), pj.pin_hash)) { if (ctx.env.cachePut) ctx.env.cachePut(kunciC, String(gagal + 1), 900); throw Gagal('PIN salah. Sisa ' + (4 - gagal) + ' percobaan.', 'AUTH_FAIL', { pin: 'PIN salah' }); }
-    if (ctx.env.cachePut) ctx.env.cachePut(kunciC, '0', 1);
-  }
-  function svcDokSetujui(ctx, d) {
-    cekPinPejabat(ctx, d.pin);
-    var ids = d.ids || [], hasil = [];
-    ids.forEach(function (id) { var x = wajibAda(ctx, 'DE_Dokumen', id, 'Dokumen'); if (x.status !== 'MENUNGGU_TTD') return; terbitkan(ctx, x, 'LOGIN+PIN'); hasil.push(ringkasDok(ctx, cari(ctx, 'DE_Dokumen', id))); });
-    audit(ctx, 'DOKUMEN_SETUJUI', ids.length + ' dokumen', '', hasil.map(function (x) { return x.nomor; }).join(', '));
-    return { dokumen: hasil };
-  }
-  function svcDokAturPin(ctx, d) {
-    var u = cari(ctx, 'Pengguna', ctx.me.user_id);
-    if (!samaAman(hashRahasia(ctx, String(d.sandi || ''), u.salt), u.hash_sandi)) throw Gagal('Sandi login salah.', 'VALIDATION', { sandi: 'Sandi salah' });
-    if (!/^\d{6}$/.test(s(d.pin))) throw Gagal('PIN harus 6 angka.', 'VALIDATION', { pin: '6 angka' });
-    var salt = ctx.env.acak(16), lama = cari(ctx, 'DE_Pejabat', u.user_id), row = { user_id: u.user_id, nama: s(d.nama) || u.nama, jabatan: s(d.jabatan) || 'Owner', pin_hash: hashRahasia(ctx, s(d.pin), salt), pin_salt: salt, aktif: 'Y' };
-    if (lama) ubah(ctx, 'DE_Pejabat', [row]); else tambah(ctx, 'DE_Pejabat', [row]);
-    audit(ctx, 'DOKUMEN_PIN', 'DE_Pejabat:' + u.user_id, '', 'PIN diperbarui');
-    return { ok: true, pejabat: pejabatOwner(ctx) };
-  }
-  function svcDokTarik(ctx, d) {
-    var x = wajibAda(ctx, 'DE_Dokumen', d.id, 'Dokumen'); if (x.status !== 'TERBIT') throw Gagal('Hanya dokumen terbit yang bisa ditarik.');
-    if (s(d.alasan).length < 5) throw Gagal('Alasan wajib diisi.', 'VALIDATION', { alasan: 'Wajib' });
-    ubah(ctx, 'DE_Dokumen', [{ id: x.id, status: 'DITARIK', alasan_tarik: s(d.alasan).slice(0, 300) }]);
-    audit(ctx, 'DOKUMEN_TARIK', 'DE_Dokumen:' + x.id, 'TERBIT', s(d.alasan));
-    return { dokumen: ringkasDok(ctx, cari(ctx, 'DE_Dokumen', x.id)) };
-  }
-  function svcDokDetail(ctx, d) {
-    if (ctx.me.peran !== 'owner') wajibIzin(ctx, 'dokumen.kelola');
-    var x = wajibAda(ctx, 'DE_Dokumen', d.id, 'Dokumen'), o = ringkasDok(ctx, x);
-    o.isian = jsonAman(x.data_isian, {}); o.url_verifikasi = (notifCfg(ctx).app_url || '') + '#/v/' + x.kode_verifikasi;
-    if (d.unduh && o.berkas && o.berkas.pdf && ctx.env.ambilBerkas) o.unduhan = ctx.env.ambilBerkas(o.berkas.pdf);
-    return o;
-  }
-  function svcDokProses(ctx) {
-    var jobs = semua(ctx, 'DE_Antrean').filter(function (j) { return j.status === 'MENUNGGU' && num(j.percobaan) < 3; }).slice(0, 4), ok = 0;
-    jobs.forEach(function (j) {
-      var x = cari(ctx, 'DE_Dokumen', j.dok_id), tpl = x ? cari(ctx, 'DE_Template', x.template_kode) : null;
-      try {
-        var hasil = ctx.env.renderDokumen ? ctx.env.renderDokumen({ dok: x, template: tpl, isian: jsonAman(x.data_isian, {}), penandatangan: jsonAman(x.penandatangan, []), url_verifikasi: (notifCfg(ctx).app_url || '') + '#/v/' + x.kode_verifikasi }) : { demo: true };
-        ubah(ctx, 'DE_Dokumen', [{ id: x.id, berkas: JSON.stringify(hasil.berkas || { demo: true }), hash_pdf: hasil.hash || '' }]);
-        ubah(ctx, 'DE_Antrean', [{ job_id: j.job_id, status: 'SELESAI', selesai: kini(ctx), percobaan: num(j.percobaan) + 1 }]); ok++;
-      } catch (e) { ubah(ctx, 'DE_Antrean', [{ job_id: j.job_id, status: num(j.percobaan) + 1 >= 3 ? 'GAGAL' : 'MENUNGGU', galat: s(e.message).slice(0, 200), percobaan: num(j.percobaan) + 1 }]); }
-    });
-    return { diproses: ok, sisa: semua(ctx, 'DE_Antrean').filter(function (j) { return j.status === 'MENUNGGU'; }).length };
-  }
-  function simpanTemplate(ctx, kode, fileId, engine, teks) {
-    var sk = deSusunSkema(dePindaiTeks(teks)), lama = cari(ctx, 'DE_Template', kode), dj = DE_JENIS[kode];
-    var row = { kode: kode, nama: dj.nama, engine: engine, file_id: fileId, bidang: JSON.stringify(sk.bidang), slot_ttd: JSON.stringify([{ slot: 1, label: 'Owner', cara: 'tetap', wajibSetuju: dj.wajibSetuju }]), keluaran: 'pdf', qr_per_penandatangan: 'T', versi: (lama ? num(lama.versi) : 0) + 1, aktif: 'Y', diperbarui: kini(ctx) };
-    if (lama) { row.slot_ttd = lama.slot_ttd; ubah(ctx, 'DE_Template', [row]); } else tambah(ctx, 'DE_Template', [row]);
-    return { kode: kode, bidang: sk.bidang, versi: row.versi };
-  }
-  function svcTemplatePindai(ctx, d) {
-    if (!DE_JENIS[d.kode]) throw Gagal('Kode template tidak dikenal.');
-    var fid = (String(d.url || '').match(/[-\w]{25,}/) || [])[0]; if (!fid) throw Gagal('URL template tidak valid.', 'VALIDATION', { url: 'Tempel URL Google Docs/Sheets/Slides' });
-    if (!ctx.env.pindaiTemplate) throw Gagal('Pindai template hanya tersedia di backend Apps Script.');
-    var h = ctx.env.pindaiTemplate(fid); if (!dePindaiTeks(h.teks).length) throw Gagal('Tidak ada placeholder {{...}} di template ini.');
-    var r = simpanTemplate(ctx, d.kode, fid, h.engine, h.teks); audit(ctx, 'TEMPLATE_PINDAI', 'DE_Template:' + d.kode, '', 'v' + r.versi); return r;
-  }
-  function svcTemplateAtur(ctx, d) {
-    var t = wajibAda(ctx, 'DE_Template', d.kode, 'Template'), slot = jsonAman(t.slot_ttd, []);
-    if (slot[0]) slot[0].wajibSetuju = !!d.wajibSetuju;
-    ubah(ctx, 'DE_Template', [{ kode: t.kode, aktif: d.aktif === false ? 'T' : 'Y', slot_ttd: JSON.stringify(slot) }]);
-    audit(ctx, 'TEMPLATE_ATUR', 'DE_Template:' + t.kode, '', { aktif: d.aktif !== false, wajibSetuju: !!d.wajibSetuju });
-    return { ok: true };
-  }
-  function svcTemplateBawaan(ctx) {
-    if (!ctx.env.buatTemplateBawaan) throw Gagal('Hanya tersedia di backend Apps Script.');
-    var f = ctx.env.buatTemplateBawaan(), out = [];
-    Object.keys(f).forEach(function (k) { out.push(simpanTemplate(ctx, k, f[k].file_id, f[k].engine, f[k].teks)); });
-    audit(ctx, 'TEMPLATE_BAWAAN', 'DE_Template', '', out.map(function (x) { return x.kode; }).join(','));
-    return { template: out };
-  }
-  function svcPubVerifikasi(ctx, d) {
-    var kode = s(d.kode).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    var gagal = num(ctx.env.cacheGet ? ctx.env.cacheGet('vrf_gagal') : 0);
-    if (gagal > 200) throw Gagal('Terlalu banyak percobaan. Coba lagi nanti.', 'LOCKED');
-    var x = kode.length >= 10 ? semua(ctx, 'DE_Dokumen').filter(function (r) { return r.kode_verifikasi === kode; })[0] : null;
-    if (!x) { if (ctx.env.cachePut) ctx.env.cachePut('vrf_gagal', String(gagal + 1), 600); return { ditemukan: false }; }
-    var isi = jsonAman(x.data_isian, {});
-    return { ditemukan: true, status: x.status === 'TERBIT' ? 'SAH' : x.status, jenis: (DE_JENIS[x.template_kode] || {}).nama, nomor: x.nomor, terbit: x.terbit, ringkas: isi._RINGKAS || '', instansi: atur(ctx, 'identitas').nama_app,
-      penandatangan: jsonAman(x.penandatangan, []).map(function (p) { return { nama: p.nama, jabatan: p.jabatan, metode: p.metode, waktu: p.waktu }; }), hash_pdf: x.hash_pdf, alasan_tarik: x.status === 'DITARIK' ? x.alasan_tarik : '' };
+  /* Unggah satu gambar slide → Drive (publik, folder Logo/Masuk). Daftar slide baru tersimpan saat "Simpan". */
+  function svcUnggahSlide(ctx, d) {
+    wajibIzin(ctx, 'pengaturan.tampilan');
+    var b = d.berkas || {};
+    if (['image/jpeg', 'image/png', 'image/webp'].indexOf(b.mime) < 0) throw Gagal('Format gambar harus JPG, PNG, atau WEBP.', 'VALIDATION', { slide: 'JPG/PNG/WEBP' });
+    if (Math.floor(String(b.base64 || '').length * 3 / 4) > 3 * 1024 * 1024) throw Gagal('Ukuran gambar maksimal 3 MB.', 'VALIDATION', { slide: 'Maks 3 MB' });
+    var ext = b.mime === 'image/png' ? 'png' : b.mime === 'image/webp' ? 'webp' : 'jpg';
+    var f = ctx.env.simpanBerkas({ nama: 'masuk-' + ctx.env.acak(8) + '.' + ext, mime: b.mime, base64: b.base64, folder: 'Logo/Masuk', publik: true, lebar: 1920 });
+    audit(ctx, 'PENGATURAN', 'login.unggah', '', f.id);
+    return { url: f.url };
   }
 
   /* ---------- 22. Tabel rute: aksi → izin → layanan ---------- */
@@ -2195,7 +1699,6 @@ var Inti = (function () {
     'pub.config': { fn: svcPubConfig, publik: true },
     'pub.formDaftar': { fn: svcPubFormDaftar, publik: true },
     'pub.kirimDaftar': { fn: svcPubKirimDaftar, publik: true, tulis: true },
-    'pub.verifikasi': { fn: svcPubVerifikasi, publik: true },
     'sync.ack': { fn: svcSyncAck, publik: true, tulis: true },
 
     'dash.admin': { fn: svcDashAdmin, peran: OA },
@@ -2244,6 +1747,7 @@ var Inti = (function () {
     'atur.ambil': { fn: svcAturAmbil, peran: OA },
     'atur.simpan': { fn: svcAturSimpan, peran: OA, tulis: true },
     'atur.unggah': { fn: svcUnggahIdentitas, peran: OA, tulis: true },
+    'atur.unggahSlide': { fn: svcUnggahSlide, peran: OA, tulis: true },
     'atur.kembalikan': { fn: svcAturKembalikan, peran: OA, tulis: true },
     'atur.sinkron': { fn: svcSinkronUlang, izin: ['pengaturan.sinkron'], tulis: true },
     'master.simpan': { fn: svcMasterSimpan, izin: ['pengaturan.master'], tulis: true },
@@ -2262,41 +1766,7 @@ var Inti = (function () {
     'akun.reset': { fn: svcAkunReset, peran: OA, tulis: true },
     'log.list': { fn: svcLogList, owner: true },
 
-    'notif.config': { fn: svcNotifConfig, owner: true },
-    'notif.configSave': { fn: svcNotifConfigSave, owner: true, tulis: true },
-    'notif.queue': { fn: svcNotifQueue, izin: ['crm.kelola'] },
-    'notif.proses': { fn: svcNotifProses, izin: ['crm.kelola', 'wa.blast'], tulis: true },
-    'notif.retry': { fn: svcNotifRetry, izin: ['crm.kelola'], tulis: true },
-    'notif.drain': { fn: function (ctx) { return prosesAntrian(ctx, {}); }, tulis: true },
-    'wa.device': { fn: svcWaDevice, owner: true },
-    'wa.tes': { fn: svcWaTes, owner: true, tulis: true },
-    'email.tes': { fn: svcEmailTes, owner: true, tulis: true },
-    'wa.audience': { fn: svcWaAudience, izin: ['wa.blast'], tulis: true },
-    'wa.blastBuat': { fn: svcBlastBuat, izin: ['wa.blast'], tulis: true },
-    'wa.blastList': { fn: svcBlastList, izin: ['wa.blast', 'crm.kelola'] },
-    'wa.blastProses': { fn: svcNotifProses, izin: ['wa.blast'], tulis: true },
-    'wa.blastStop': { fn: svcBlastStop, izin: ['wa.blast'], tulis: true },
-    'wa.validate': { fn: svcWaValidate, izin: ['crm.kelola'], tulis: true },
-    'crm.list': { fn: svcCrmList, izin: ['crm.kelola'], tulis: true },
-    'crm.detail': { fn: svcCrmDetail, izin: ['crm.kelola'] },
-    'crm.save': { fn: svcCrmSave, izin: ['crm.kelola'], tulis: true },
-    'crm.bulk': { fn: svcCrmBulk, izin: ['crm.kelola'], tulis: true },
-    'crm.interaksi': { fn: svcCrmInteraksi, izin: ['crm.kelola'], tulis: true },
-    'crm.import': { fn: svcCrmImport, izin: ['crm.kelola'], tulis: true },
-    'crm.sync': { fn: svcCrmSync, izin: ['crm.kelola'], tulis: true },
-    'crm.ekspor': { fn: svcCrmEkspor, izin: ['crm.kelola'], tulis: true },
-
-    'berkas.ambil': { fn: function (ctx, d) { if (!ctx.env.ambilBerkas) throw Gagal('Tidak tersedia.'); return ctx.env.ambilBerkas(s(d.id)); }, peran: OA },
-    'dok.ambil': { fn: svcDokAmbil, peran: OA },
-    'dok.buat': { fn: svcDokBuat, peran: OA, tulis: true },
-    'dok.detail': { fn: svcDokDetail, peran: OA },
-    'dok.proses': { fn: svcDokProses, peran: OA, tulis: true },
-    'dok.setujui': { fn: svcDokSetujui, owner: true, tulis: true },
-    'dok.aturPin': { fn: svcDokAturPin, owner: true, tulis: true },
-    'dok.tarik': { fn: svcDokTarik, owner: true, tulis: true },
-    'dok.templatePindai': { fn: svcTemplatePindai, owner: true, tulis: true },
-    'dok.templateAtur': { fn: svcTemplateAtur, owner: true, tulis: true },
-    'dok.templateBawaan': { fn: svcTemplateBawaan, owner: true, tulis: true }
+    'berkas.ambil': { fn: function (ctx, d) { if (!ctx.env.ambilBerkas) throw Gagal('Tidak tersedia.'); return ctx.env.ambilBerkas(s(d.id)); }, peran: OA }
   };
 
   /* ---------- 23. Titik masuk tunggal ---------- */
@@ -2313,7 +1783,8 @@ var Inti = (function () {
         return r.fn(ctx, (req && req.payload) || {});
       };
       var data = r.tulis ? env.kunci(jalan) : jalan();
-      return { ok: true, data: data, ms: env.sekarang() - t0, v: VERSI_APP, nq: ctx._notif.length, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
+      kirimEmailTertunda(ctx);   // di luar kunci: tidak menahan penulis lain
+      return { ok: true, data: data, ms: env.sekarang() - t0, v: VERSI_APP, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
     } catch (e) {
       if (e && e.__inti) {
         if (e.code === 'FORBIDDEN' && ctx.me) { try { env.kunci(function () { audit(ctx, 'DITOLAK', aksi, '', e.message); }); } catch (x) { } }
@@ -2338,7 +1809,6 @@ var Inti = (function () {
       if (!semua(ctx, 'Aturan_Bisnis').length) { tambah(ctx, 'Aturan_Bisnis', Object.keys(ATURAN_BAWAAN).map(function (k) { return { key: k, value: JSON.stringify(ATURAN_BAWAAN[k]), versi: 1, updated_by: 'sistem', updated_at: kini(ctx) }; })); log.push('+ Aturan_Bisnis bawaan'); }
       if (!semua(ctx, 'Form_Def').length) { tambah(ctx, 'Form_Def', [{ form_id: 'FRM-0001', versi: 1, skema_json: JSON.stringify(FORM_BAWAAN), status: 'aktif', updated_by: 'sistem', updated_at: kini(ctx) }]); log.push('+ Form_Def v1'); }
       if (o.identitas && !cari(ctx, 'Pengaturan', 'identitas')) { setAtur(ctx, 'identitas', gabung(PENGATURAN_BAWAAN.identitas, o.identitas)); log.push('+ identitas'); }
-      Object.keys(o.template || {}).forEach(function (k) { if (!cari(ctx, 'DE_Template', k)) { simpanTemplate(ctx, k, o.template[k].file_id, o.template[k].engine, o.template[k].teks); log.push('+ template ' + k); } });
       if (!semua(ctx, 'Pengguna').some(function (u) { return u.peran === 'owner'; })) {
         var sandi = (o.owner && o.owner.sandi) || sandiAcak(ctx), salt = env.acak(16);
         tambah(ctx, 'Pengguna', [{ user_id: 'USR-OWNER', nama: (o.owner && o.owner.nama) || 'Owner', peran: 'owner', username: (o.owner && o.owner.username) || 'owner', hash_sandi: hashRahasia(ctx, sandi, salt), salt: salt, versi_token: 1, gagal_login: 0, kunci_hingga: '', coach_id: '', siswa_ids: '', kontak: '', email: (o.owner && o.owner.email) || '', aktif: 'Y', login_terakhir: '', dibuat_at: kini(ctx) }]);
@@ -2353,23 +1823,18 @@ var Inti = (function () {
     env.kunci(function () {
       var habis = semua(ctx, 'Paket_Aktif').filter(function (e) { return e.status === 'Aktif' && e.tgl_kedaluwarsa && e.tgl_kedaluwarsa < ctx.hariIni; });
       ubah(ctx, 'Paket_Aktif', habis.map(function (e) { return { enr_id: e.enr_id, status: 'HABIS', alasan_habis: 'kedaluwarsa', habis_at: kini(ctx) }; })); n = habis.length;
-      crmSync(ctx);
     });
     return { kedaluwarsa: n };
   }
-  function prosesNotifLatar(env) { var ctx = konteksSistem(env); return env.kunci(function () { return prosesAntrian(ctx, {}); }); }
-  function prosesDokumenLatar(env) { var ctx = konteksSistem(env); return env.kunci(function () { return svcDokProses(ctx); }); }
   function snapshotPublikEnv(env) { var ctx = konteksSistem(env), snap = snapshotPublik(ctx); return { snapshot: snap, cek: cekSnapshot(ctx, snap) }; }
-  function adaAntrian(env) { var ctx = konteksSistem(env); return semua(ctx, 'AntrianNotif', { ekor: 500 }).some(function (r) { return r.status === 'Antri'; }) || semua(ctx, 'DE_Antrean').some(function (j) { return j.status === 'MENUNGGU'; }); }
 
   return {
-    VERSI: VERSI_APP, SKEMA: SKEMA, IZIN: IZIN, NAMA_PERAN: NAMA_PERAN, NOTIF_EVENTS: NOTIF_EVENTS, DE_JENIS: DE_JENIS, FORM_BAWAAN: FORM_BAWAAN,
+    VERSI: VERSI_APP, SKEMA: SKEMA, IZIN: IZIN, NAMA_PERAN: NAMA_PERAN, FORM_BAWAAN: FORM_BAWAAN, LOGIN_BAWAAN: PENGATURAN_BAWAAN.login,
     TEMA_BAWAAN: TEMA_BAWAAN, ATURAN_BAWAAN: ATURAN_BAWAAN, WARNA_KATEGORI: WARNA_KATEGORI, NAMA_HARI: NAMA_HARI, NAMA_BULAN: NAMA_BULAN, RUTE: Object.keys(RUTE),
-    jalankan: jalankan, setupAwal: setupAwal, tugasHarian: tugasHarian, prosesNotifLatar: prosesNotifLatar, prosesDokumenLatar: prosesDokumenLatar, snapshotPublikEnv: snapshotPublikEnv, adaAntrian: adaAntrian,
+    jalankan: jalankan, setupAwal: setupAwal, tugasHarian: tugasHarian, snapshotPublikEnv: snapshotPublikEnv,
     hashRahasia: function (env, r, salt) { return hashRahasia({ env: env }, r, salt); },
     util: { tglWIB: tglWIB, waktuWIB: waktuWIB, msWIB: msWIB, msDariWaktu: msDariWaktu, geserTgl: geserTgl, hariKe: hariKe, geserBulan: geserBulan, bulanDari: bulanDari, rupiah: rupiah, tglIndo: tglIndo, namaBulan: namaBulan,
-      kontras: kontras, ujiKontras: ujiKontras, hp08: hp08, hp62: hp62, hpValid: hpValid, kategoriSesi: kategoriSesi, b64e: b64e, b64d: b64d, usia: usia, menitDari: menitDari, samarkan: samarkan },
-    de: { pindai: dePindaiTeks, susun: deSusunSkema, pengubah: dePengubah, terbilang: deTerbilang, POLA: DE_POLA }
+      kontras: kontras, ujiKontras: ujiKontras, hp08: hp08, hp62: hp62, hpValid: hpValid, urlGambarSlide: urlGambarSlide, kategoriSesi: kategoriSesi, b64e: b64e, b64d: b64d, usia: usia, menitDari: menitDari, samarkan: samarkan }
   };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = Inti;

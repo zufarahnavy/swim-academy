@@ -1,5 +1,5 @@
 /* =====================================================================
- * PENGATURAN (identitas, tema, paket, master, form builder, absensi, sinkron),
+ * PENGATURAN (identitas, tema, halaman masuk, paket, master, form builder, absensi, sinkron),
  * HARGA·TARIF·ATURAN (Owner), HAK AKSES (Owner), AKUN, LOG AUDIT
  * ===================================================================== */
 (function (W, D) {
@@ -16,7 +16,7 @@
       return API.Q('atur.ambil').then(function (d) {
         if (ctx.basi()) return;
         var b = d.bisa, tabs = [];
-        if (b.tampilan) tabs.push({ v: 'identitas', label: 'Identitas', ikon: 'gedung' }, { v: 'tema', label: 'Tampilan', ikon: 'palet' });
+        if (b.tampilan) tabs.push({ v: 'identitas', label: 'Identitas', ikon: 'gedung' }, { v: 'tema', label: 'Tampilan', ikon: 'palet' }, { v: 'masuk', label: 'Halaman masuk', ikon: 'gambar' });
         if (b.master) tabs.push({ v: 'paket', label: 'Paket & kategori', ikon: 'tag' }, { v: 'master', label: 'Kolam & pelatih', ikon: 'data' });
         if (b.form) tabs.push({ v: 'form', label: 'Form pendaftaran', ikon: 'formulir' });
         if (b.batas) tabs.push({ v: 'absensi', label: 'Absensi', ikon: 'jam' });
@@ -26,7 +26,7 @@
         ctx.el.innerHTML = '<div class="kepala-hal"><div class="judul"><h1>Pengaturan Aplikasi</h1><p>Perubahan tampilan & form tersimpan di backend lalu dipublikasikan ke GitHub Pages (snapshot v' + d.publik_versi + '). Harga & rekening hanya di menu Owner.</p></div><div class="aksi"><span class="chip-sinkron ' + (sk.status === 'Gagal' ? 'gagal' : /Menunggu/.test(sk.status) ? 'tunggu' : '') + '"><i></i>' + e(sk.status) + '</span></div></div>' +
           UI2.seg('tab', tabs, st.tab) + '<div id="atur-isi" class="mt16"></div>';
         var w = ctx.el.querySelector('#atur-isi');
-        ({ identitas: tabIdentitas, tema: tabTema, paket: tabPaket, master: tabMaster, form: tabForm, absensi: tabAbsensi, sinkron: tabSinkron })[st.tab](ctx, w, d);
+        ({ identitas: tabIdentitas, tema: tabTema, masuk: tabMasuk, paket: tabPaket, master: tabMaster, form: tabForm, absensi: tabAbsensi, sinkron: tabSinkron })[st.tab](ctx, w, d);
         ctx.on('seg', '.seg[data-seg=tab]', function (s, ev) { st.tab = ev.detail.v; R.tampilkan({ diam: true, bingkai: true }); });
         ctx.nanti(function () { UI2.hidupkan(ctx.el); });
       });
@@ -38,10 +38,10 @@
     var id = d.identitas, owner = d.bisa.owner;
     w.innerHTML = '<div class="grid g-2-1"><form class="kartu pad" id="f-id"><b>Identitas aplikasi</b><div class="form mt16">' +
       UI2.fld({ k: 'nama_app', label: 'Nama aplikasi', v: id.nama_app, wajib: true, l: 'l3' }) + UI2.fld({ k: 'kontak_admin', label: 'WhatsApp Admin (publik)', v: id.kontak_admin, l: 'l3', ph: '08xxxxxxxxxx' }) +
-      UI2.fld({ k: 'tagline', label: 'Tagline', v: id.tagline }) + UI2.fld({ k: 'alamat', label: 'Alamat (untuk kop dokumen)', v: id.alamat, tipe: 'area', baris: 2 }) +
-      (owner ? UI2.fld({ k: 'email_owner', label: 'Email Owner (notifikasi penting)', v: id.email_owner, tipe: 'email' }) : '') +
+      UI2.fld({ k: 'tagline', label: 'Tagline', v: id.tagline }) + UI2.fld({ k: 'alamat', label: 'Alamat', v: id.alamat, tipe: 'area', baris: 2 }) +
+      (owner ? UI2.fld({ k: 'email_owner', label: 'Email Owner (pemberitahuan penting)', v: id.email_owner, tipe: 'email', bantu: 'Dikirimi email saat kunci absensi dibuka atau sinkron GitHub gagal berulang. Kosongkan bila tidak perlu.' }) : '') +
       '<div class="fld"><button type="submit" class="btn primer">Simpan identitas</button></div></div></form>' +
-      '<div class="kartu pad"><b>Logo & favicon</b><p class="kecil redup">PNG/SVG/ICO maks. 1 MB. Disimpan di Drive, dipakai di sidebar, halaman masuk, formulir, dan dokumen.</p>' +
+      '<div class="kartu pad"><b>Logo & favicon</b><p class="kecil redup">PNG/SVG/ICO maks. 1 MB. Disimpan di Drive, dipakai di sidebar, halaman masuk, formulir, dan laporan.</p>' +
       ['logo', 'favicon'].map(function (j) { return '<div class="item-ikon mt12"><span class="sb-logo" style="background:#F1F5F9"><img src="' + e(id[j] || (j === 'logo' ? 'assets/logo.svg' : 'assets/favicon.svg')) + '" alt=""></span><div class="tumbuh"><b class="kecil">' + (j === 'logo' ? 'Logo' : 'Favicon') + '</b><div class="kecil redup">' + (id[j] ? 'Kustom' : 'Bawaan') + '</div></div><label class="btn kecil">' + ik('unggah', 'k') + 'Ganti<input type="file" hidden accept="image/png,image/svg+xml,image/x-icon" data-unggah="' + j + '"></label></div>'; }).join('') + '</div></div>';
     w.querySelector('#f-id').addEventListener('submit', function (ev) { ev.preventDefault(); var f = ev.target, v = UI2.baca(f); MR.UI.kerja(f.querySelector('[type=submit]'), function () { return API.T('atur.simpan', { bagian: 'identitas', nilai: Object.assign({}, id, v) }); }, { form: f }).then(function (r) { App.terapkanPublik({ nama_app: r.nilai.nama_app, tagline: r.nilai.tagline }); hasilSinkron(r); R.muatUlang(); }).catch(function () { }); });
     w.addEventListener('change', function (ev) {
@@ -50,6 +50,78 @@
         return API.T('atur.unggah', { jenis: j, berkas: { nama: b.nama, mime: b.mime, base64: b.base64 } });
       }).then(function (r) { var o = {}; o[j] = r.url; App.terapkanPublik(o); hasilSinkron(r); R.muatUlang(); }).catch(MR.UI.galat);
     });
+  }
+
+  /* ---------- Halaman masuk: slideshow (unggah / URL / Google Drive), judul, durasi ---------- */
+  function tabMasuk(ctx, w, d) {
+    var L = JSON.parse(JSON.stringify(d.login || Inti.LOGIN_BAWAAN)), maks = d.loginMaks || 6, demo = API.mode === 'demo';
+    L.slides = L.slides || [];
+    w.innerHTML = '<div class="dua-kolom"><form class="kartu pad" id="f-masuk-atur" novalidate><b>Slideshow halaman masuk</b>' +
+      '<p class="kecil redup">Foto suasana kolam di sisi kiri halaman masuk (desktop) dan header (HP). Pakai foto lanskap minimal 1600 px. Bila daftar kosong, ilustrasi bawaan yang tampil.</p>' +
+      '<div class="fld mt16" data-k="slides"><div class="slide-daftar" id="sd"></div><span class="galat"></span></div>' +
+      '<div class="baris bungkus mt12" style="gap:10px"><label class="btn lembut" id="btn-unggah-slide">' + ik('unggah', 'k') + '<span>Unggah foto</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden data-unggah-slide></label>' +
+        '<div class="baris tumbuh" style="min-width:min(100%,260px)"><input class="inp" id="url-slide" type="url" placeholder="Tempel URL gambar atau tautan Google Drive" autocomplete="off"><button type="button" class="btn" data-x="tambahUrl">Tambah</button></div></div>' +
+      '<p class="kecil redup mt8">' + ik('info', 'k') + ' Tautan Google Drive harus dibagikan ke "Siapa saja yang memiliki link". Saat sinkron, gambar Drive disalin ke situs agar cepat dimuat.</p>' +
+      '<div class="form mt16">' + UI2.fld({ k: 'headline', label: 'Judul di atas gambar', v: L.headline, wajib: true, attr: ' maxlength="90"' }) +
+        UI2.fld({ k: 'subjudul', label: 'Teks pendukung (slogan)', v: L.subjudul, tipe: 'area', baris: 2, attr: ' maxlength="180"' }) +
+        UI2.fld({ k: 'durasi', label: 'Durasi tiap gambar (ms)', v: L.durasi, tipe: 'number', l: 'l3', attr: ' min="3000" max="15000" step="500"', bantu: '3.000–15.000 ms · bawaan 5.000' }) +
+        '<div class="fld"><div class="baris"><button type="button" class="btn" data-x="bawaan">' + ik('segar', 'k') + 'Bawaan</button><button type="submit" class="btn primer tumbuh">Simpan halaman masuk</button></div></div></div></form>' +
+      '<div class="lengket tumpuk" style="gap:16px"><div class="kartu pad"><div class="baris ujung"><b>Pratinjau</b><a class="kecil" href="#/masuk" data-x="lihat" target="_blank" rel="noopener">Buka halaman masuk ' + ik('tautan', 'k') + '</a></div><div class="pratinjau-masuk mt12" id="pv-masuk"></div><p class="kecil redup mt8">Efek zoom halus (Ken Burns) & transisi silang 1 detik, berganti sesuai durasi.</p></div></div></div>';
+    var f = w.querySelector('#f-masuk-atur'), sd = w.querySelector('#sd'), pv = w.querySelector('#pv-masuk'), versi = 0;
+    function daftar() {
+      sd.innerHTML = L.slides.length ? L.slides.map(function (u, i) {
+        return '<div class="slide-baris"><img src="' + e(u) + '" alt="Slide ' + (i + 1) + '" loading="lazy"><div class="tumpuk"><b class="kecil">Gambar ' + (i + 1) + '</b><span class="url">' + e(/^data:/.test(u) ? 'Unggahan (demo)' : u) + '</span></div>' +
+          '<div class="baris aksi-slide" style="gap:4px"><button type="button" class="btn ikon kecil hantu" data-x="naik" data-i="' + i + '" aria-label="Naikkan"' + (i ? '' : ' disabled') + '>' + ik('atas', 'k') + '</button><button type="button" class="btn ikon kecil hantu" data-x="turun" data-i="' + i + '" aria-label="Turunkan"' + (i < L.slides.length - 1 ? '' : ' disabled') + '>' + ik('bawah', 'k') + '</button><button type="button" class="btn ikon kecil hantu" data-x="hapus" data-i="' + i + '" aria-label="Hapus">' + ik('sampah', 'k') + '</button></div></div>';
+      }).join('') : '<div class="item-ikon" style="border:1px dashed var(--garis-kuat);border-radius:14px;padding:12px"><span class="ubin">' + ik('gambar') + '</span><div class="tumbuh"><b class="kecil">Memakai 4 ilustrasi bawaan</b><div class="kecil redup">Unggah foto atau tempel tautan untuk menggantinya.</div></div></div>';
+      w.querySelector('#btn-unggah-slide').classList.toggle('mati', L.slides.length >= maks);
+      pratinjau();
+    }
+    function pratinjau() {
+      var c = W.cfgMasuk ? (function () { var simpan = App.publik.login; App.publik.login = L; var x = W.cfgMasuk(); App.publik.login = simpan; return x; })() : null;
+      if (!c) return; var v = ++versi;
+      pv.innerHTML = W.heroMasuk(c, App.publik);
+      W.jalankanSlide(pv.querySelector('.masuk-hero'), function () { return v === versi && !ctx.basi(); });
+    }
+    function tambah(u) {
+      if (L.slides.length >= maks) { MR.UI.toast('Maksimal ' + maks + ' gambar.', 'warn'); return false; }
+      u = Inti.util.urlGambarSlide(u);
+      if (!/^https:\/\/\S{8,}$/.test(u) && !/^data:image\//.test(u)) { MR.UI.toast('Alamat harus diawali https:// atau tautan Google Drive.', 'warn'); return false; }
+      L.slides.push(u); daftar(); return true;
+    }
+    f.addEventListener('input', MR.U.debounce(function (ev) {
+      if (!ev.target.name) return; var v = UI2.baca(f); L.headline = v.headline; L.subjudul = v.subjudul; L.durasi = Number(v.durasi) || L.durasi; pratinjau();
+    }, 350));
+    w.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-x]'); if (!b) return; var i = Number(b.dataset.i), x = b.dataset.x;
+      if (x === 'lihat') return;
+      if (x === 'naik' && i > 0) { L.slides.splice(i - 1, 0, L.slides.splice(i, 1)[0]); daftar(); }
+      if (x === 'turun' && i < L.slides.length - 1) { L.slides.splice(i + 1, 0, L.slides.splice(i, 1)[0]); daftar(); }
+      if (x === 'hapus') { L.slides.splice(i, 1); daftar(); }
+      if (x === 'tambahUrl') { var inp = w.querySelector('#url-slide'); if (inp.value.trim() && tambah(inp.value.trim())) inp.value = ''; }
+      if (x === 'bawaan') { L = JSON.parse(JSON.stringify(Inti.LOGIN_BAWAAN)); f.headline.value = L.headline; f.subjudul.value = L.subjudul; f.durasi.value = L.durasi; daftar(); MR.UI.toast('Dikembalikan ke bawaan — klik Simpan untuk menerapkan.', 'info'); }
+    });
+    w.querySelector('#url-slide').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); w.querySelector('[data-x=tambahUrl]').click(); } });
+    w.querySelector('[data-unggah-slide]').addEventListener('change', function (ev) {
+      var berkas = Array.prototype.slice.call(ev.target.files || [], 0, Math.max(0, maks - L.slides.length)); ev.target.value = '';
+      if (!berkas.length) { if (L.slides.length >= maks) MR.UI.toast('Maksimal ' + maks + ' gambar.', 'warn'); return; }
+      var p = MR.UI.proses('Mengunggah foto', berkas.map(function (x, i) { return 'Foto ' + (i + 1) + ' · ' + x.name; })); p.langkah(0);
+      berkas.reduce(function (rantai, file, i) {
+        return rantai.then(function () {
+          return UI2.bacaBerkas(file, { maksMB: 3, tipe: /^image\/(jpeg|png|webp)$/, pesanTipe: 'Format foto harus JPG, PNG, atau WEBP.', sisi: demo ? 1280 : 1920, mutu: demo ? 0.76 : 0.84, paksa: true })
+            .then(function (b) { return API.T('atur.unggahSlide', { berkas: { nama: b.nama, mime: b.mime, base64: b.base64 } }); })
+            .then(function (r) { L.slides.push(r.url); p.langkah && p.langkah(i + 1); });
+        });
+      }, Promise.resolve()).then(function () { p.selesai(); daftar(); MR.UI.toast(berkas.length + ' foto ditambahkan — klik Simpan untuk menerapkan.', 'ok'); })
+        .catch(function (er) { p.selesai(); daftar(); MR.UI.galat(er); });
+    });
+    f.addEventListener('submit', function (ev) {
+      ev.preventDefault(); var v = UI2.baca(f);
+      var nilai = { slides: L.slides, headline: v.headline, subjudul: v.subjudul, durasi: Number(v.durasi) };
+      MR.UI.kerja(f.querySelector('[type=submit]'), function () { return API.T('atur.simpan', { bagian: 'login', nilai: nilai }); }, { form: f }).then(function (r) {
+        App.terapkanPublik({ login: { slides: r.nilai.slides, headline: r.nilai.headline, subjudul: r.nilai.subjudul, durasi: r.nilai.durasi } }); hasilSinkron(r); R.muatUlang();
+      }).catch(function () { });
+    });
+    daftar();
   }
 
   function tabTema(ctx, w, d) {

@@ -94,6 +94,7 @@
     return MR.UI.kerja(tombol, function () { return API.T('daftar.linkBuat', { tipe: 'perpanjangan', enr_id: enrId, hari: 7 }); }).then(function (r) { W.tampilLink(r); }).catch(function () { });
   };
   W.urlDaftar = function (token) { return location.href.split('#')[0] + '#/daftar/' + token; };
+  W.urlPortal = function () { return location.href.split('#')[0].split('?')[0]; };
   W.tampilLink = function (r) {
     var url = W.urlDaftar(r.token), u = r.untuk;
     var teks = u ? 'Halo ' + (u.nama_ortu || 'Bapak/Ibu') + ', paket *' + u.paket + '* ' + u.nama + ' sudah terpakai ' + u.terpakai + '/' + u.total + ' sesi. Silakan perpanjang melalui link resmi ' + r.nama_app + ' berikut (berlaku sampai ' + F.waktu(r.kedaluwarsa) + '):\n' + url

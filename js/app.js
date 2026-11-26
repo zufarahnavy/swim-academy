@@ -23,8 +23,6 @@
     { grup: 'Keuangan', id: 'kas', label: 'Arus Kas', ikon: 'dompet', peran: OA, izin: ['kas.lihat'] },
     { id: 'honor', label: 'Honor Pelatih', ikon: 'koin', peran: OA, izin: ['honor.rekap_lihat'] },
     { id: 'tutup-bulan', label: 'Tutup Bulan', ikon: 'gembok', peran: OA, izin: ['tutup_bulan'] },
-    { id: 'dokumen', label: 'Dokumen', ikon: 'dokumen', peran: OA, izin: ['dokumen.kelola'] },
-    { grup: 'Komunikasi', id: 'crm', label: 'CRM & WhatsApp', ikon: 'wa', peran: OA, izin: ['crm.kelola', 'wa.blast'] },
     { grup: 'Pengaturan', id: 'pengaturan', label: 'Pengaturan', ikon: 'slider', peran: OA, izin: ['pengaturan.tampilan', 'pengaturan.master', 'pengaturan.form', 'pengaturan.sinkron', 'absensi.atur_batas'] },
     { id: 'harga', label: 'Harga, Tarif & Aturan', ikon: 'tag', peran: OA },
     { id: 'hak-akses', label: 'Hak Akses', ikon: 'tameng', peran: ['owner'] },
@@ -41,7 +39,7 @@
   var BAWAH = { owner: ['beranda', 'pendaftaran', 'siswa', 'absensi'], admin: ['beranda', 'pendaftaran', 'siswa', 'absensi'], pelatih: ['hari-ini', 'jadwal-saya', 'materi', 'rekap-saya'], ortu: ['anak', 'jadwal-anak', 'riwayat'] };
   var LABEL_BAWAH = { beranda: 'Beranda', pendaftaran: 'Daftar', siswa: 'Siswa', absensi: 'Absensi', 'hari-ini': 'Hari Ini', 'jadwal-saya': 'Jadwal', materi: 'Materi', 'rekap-saya': 'Rekap', anak: 'Anak', 'jadwal-anak': 'Jadwal', riwayat: 'Riwayat' };
   var BERANDA = { owner: 'beranda', admin: 'beranda', pelatih: 'hari-ini', ortu: 'anak' };
-  var PUBLIK = { masuk: 1, daftar: 1, v: 1 };
+  var PUBLIK = { masuk: 1, daftar: 1 };
   App.MENU = MENU;
 
   function bolehMenu(m) {
@@ -290,8 +288,42 @@
     });
   }
 
+  /* ---------- Sentuhan: riak cahaya air pada tombol & menu (300 ms) ---------- */
+  var SEL_RIAK = '.btn.primer, .btn.gelap, .btn.wa, .btn.lembut, .sb-item, .bawah-nav a, .seg button';
+  D.addEventListener('pointerdown', function (ev) {
+    if (ev.button > 0 || D.documentElement.dataset.animasi === 'mati') return;
+    var b = ev.target.closest && ev.target.closest(SEL_RIAK); if (!b || b.disabled || b.classList.contains('memuat')) return;
+    var r = b.getBoundingClientRect(), d = Math.max(r.width, r.height) * 2.2, s = D.createElement('span');
+    s.className = 'riak'; s.setAttribute('aria-hidden', 'true');
+    s.style.width = s.style.height = d + 'px'; s.style.left = (ev.clientX - r.left - d / 2) + 'px'; s.style.top = (ev.clientY - r.top - d / 2) + 'px';
+    b.appendChild(s); setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 380);
+  }, { passive: true });
+
+  /* ---------- Kaskade 40 ms: kartu muncul berurutan saat pindah halaman / ganti tab ---------- */
+  var kaskadeBerikut = false;
+  D.addEventListener('seg', function () { kaskadeBerikut = true; setTimeout(function () { kaskadeBerikut = false; }, 1500); });
+  var SEL_KASKADE = '.kepala-hal, .banner, .peringatan, .judul-seksi, .kpi, .isi-hal > .kartu, .isi-hal > div > .kartu, .grid > .kartu, .gulir-x > *, .tabel-wadah, .kartu-paket';
+  function pasangKaskade(hal) {
+    var maks = W.innerHeight + 120, i = 0;
+    MR.qsa(SEL_KASKADE, hal).forEach(function (el) {
+      if (i >= 18 || el.parentNode.closest('.kaskade')) return;
+      if (el.getBoundingClientRect().top > maks) return;
+      el.style.setProperty('--d', (i++ * 40) + 'ms'); el.classList.add('kaskade');
+    });
+  }
+  function amatiIsi() {
+    var isi = D.getElementById('isi'); if (!isi || !W.MutationObserver) return;
+    new MutationObserver(function (list) {
+      list.forEach(function (m) { m.addedNodes.forEach(function (n) {
+        if (n.nodeType !== 1 || !n.classList.contains('isi-hal')) return;
+        if (n.classList.contains('masuk') || (n.classList.contains('pudar') && kaskadeBerikut)) { if (kaskadeBerikut) n.classList.add('kaskade-ya'); kaskadeBerikut = false; pasangKaskade(n); }
+      }); });
+    }).observe(isi, { childList: true });
+  }
+
   App.mulai = function () {
     if (API.mode === 'demo') { var pita = D.getElementById('demo-pita'); if (pita) pita.hidden = false; }
+    amatiIsi();
     Sesi.muat();
     MR.mulai({
       siapkan: function () {

@@ -138,7 +138,6 @@
       if (navigator.clipboard && W.isSecureContext) navigator.clipboard.writeText(teks).then(ok, function () { cadangan(); }); else cadangan();
       function cadangan() { var t = D.createElement('textarea'); t.value = teks; t.style.position = 'fixed'; t.style.opacity = '0'; D.body.appendChild(t); t.select(); try { D.execCommand('copy'); ok(); } catch (x) { } t.remove(); }
     },
-    qr: function (teks, modul) { try { var q = qrcode(0, 'M'); q.addData(String(teks)); q.make(); return q.createSvgTag({ cellSize: modul || 4, margin: 2, scalable: true }); } catch (x) { return ''; } },
     muatSebaris: function (teks) { return '<div class="muat-sebaris"><span class="titik-air"><i></i><i></i><i></i></span>' + e(teks || 'Memuat…') + '</div>'; },
     bulanIni: function () { return Inti.util.bulanDari(Inti.util.tglWIB(API.jamServer())); },
     hariIni: function () { return Inti.util.tglWIB(API.jamServer()); },
@@ -150,9 +149,9 @@
         if (!file) return ok(null);
         if (!tipe.test(file.type)) return tolak({ message: o.pesanTipe || 'Format berkas harus JPG, PNG, atau PDF.', code: 'VALIDATION' });
         var baca = function (blob, nama) { var r = new FileReader(); r.onload = function () { var b64 = String(r.result).split(',')[1]; if (b64.length * 3 / 4 > maks) return tolak({ message: 'Ukuran berkas maksimal ' + (o.maksMB || 5) + ' MB.', code: 'VALIDATION' }); ok({ nama: nama, mime: blob.type, base64: b64, ukuran: blob.size, url: r.result }); }; r.onerror = function () { tolak({ message: 'Berkas tidak dapat dibaca.' }); }; r.readAsDataURL(blob); };
-        if (!/^image\/(png|jpe?g)$/.test(file.type) || o.kompres === false || file.size < 500 * 1024) return baca(file, file.name);
+        if (!/^image\/(png|jpe?g|webp)$/.test(file.type) || o.kompres === false || (file.size < 500 * 1024 && !o.paksa)) return baca(file, file.name);
         var img = new Image(), url = URL.createObjectURL(file);
-        img.onload = function () { var s = Math.min(1, 1600 / Math.max(img.width, img.height)), c = D.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(function (b) { baca(b, file.name.replace(/\.\w+$/, '') + '.jpg'); }, 'image/jpeg', 0.82); };
+        img.onload = function () { var s = Math.min(1, (o.sisi || 1600) / Math.max(img.width, img.height)), c = D.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(function (b) { baca(b, file.name.replace(/\.\w+$/, '') + '.jpg'); }, 'image/jpeg', o.mutu || 0.82); };
         img.onerror = function () { baca(file, file.name); }; img.src = url;
       });
     },
