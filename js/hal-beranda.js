@@ -27,7 +27,7 @@
       return API.Q('dash.admin').then(function (d) {
         if (ctx.basi()) return;
         App.perbaruiLencana();
-        var k = d.kpi, b = d.batas, kas = d.kas, sisaBatas = b.batas_aktif ? b.batas_ms - API.jamServer() : null;
+        var st = ctx.st, k = d.kpi, b = d.batas, kas = d.kas, sisaBatas = b.batas_aktif ? b.batas_ms - API.jamServer() : null;
         var info = k.sesi_total ? k.sesi_total + ' sesi latihan hari ini · ' + k.sesi_belum + ' belum diabsen' : 'Tidak ada sesi terjadwal hari ini';
         ctx.el.innerHTML =
           '<div class="banner masuk">' + W.bannerOmbak() +
@@ -46,15 +46,12 @@
             (kas ? UI2.kpi({ i: 3, label: 'Kas masuk ' + Inti.NAMA_BULAN[Number(d.hariIni.slice(5, 7)) - 1], nilai: F.rpR(kas.masuk), rp: true, ikon: 'dompet', warna: 'hijau', sub: 'Saldo bulan ini <b class="' + (kas.saldo >= 0 ? 'naik' : 'turun') + '">' + F.rpR(kas.saldo) + '</b>', spark: Grafik.spark(kas.tren_masuk, '#15803D') }).replace('class="kartu kpi rp"', 'class="kartu kpi rp klik" data-a="ke" data-h="#/kas" tabindex="0" role="button"')
               : UI2.kpi({ i: 3, label: 'Pendaftaran baru', nilai: d.pendaftaran_baru, ikon: 'tambahOrang', warna: 'oranye', sub: 'Menunggu verifikasi' })) +
           '</div>' +
+          W.bannerInfoKolam(d.info_kolam || [], { atur: d.bisa.info_kolam }) +
           '<div class="grid g-2-1 mt16">' +
             '<section class="kartu masuk-2"><div class="kartu-kepala"><span class="ubin ungu">' + ik('absen') + '</span><div class="tumpuk tumbuh"><h2>Sesi hari ini</h2><p>' + e(info) + '</p></div><a class="btn kecil hantu" href="#/absensi">Monitoring ' + ik('kanan', 'k') + '</a></div>' +
               '<div class="kartu-isi">' + (d.sesi.length ? '<div class="daftar-sesi stagger">' + d.sesi.slice(0, 8).map(function (x, i) { return W.kartuSesi(x, { klik: 'sesi', i: i }); }).join('') + '</div>' + (d.sesi.length > 8 ? '<a class="tautan-kaki" href="#/absensi">Lihat ' + (d.sesi.length - 8) + ' sesi lainnya</a>' : '') : MR.UI.kosong('Tidak ada sesi hari ini', 'Jadwal terisi akan muncul di sini.')) + '</div></section>' +
-            '<section class="kartu masuk-3"><div class="kartu-kepala"><span class="ubin merah">' + ik('segitiga') + '</span><div class="tumpuk tumbuh"><h2>Perlu tindakan</h2><p>Paket HABIS & tersisa 1 sesi</p></div></div>' +
-              '<div class="kartu-isi"><div class="daftar-ikon">' + (d.perlu.length ? d.perlu.map(function (r) {
-                var nama = r.peserta.map(function (p) { return p.nama; }).join(' & ');
-                return '<div class="item-ikon"><span class="avatar ' + (r.status === 'HABIS' ? '' : 'lembut') + '" style="' + (r.status === 'HABIS' ? 'background:#B91C1C' : '') + '">' + e(F.inisial(nama)) + '</span><div class="tumbuh" style="min-width:0"><b class="kecil satu-baris" style="display:block">' + e(nama) + '</b><div class="kecil redup satu-baris">' + e(r.paket) + ' · ' + r.sesi_terpakai + '/' + r.sesi_total + (r.status === 'HABIS' && r.hari_habis ? ' · ' + r.hari_habis + ' hari lalu' : '') + '</div></div>' +
-                  (d.bisa.link ? '<button type="button" class="btn kecil ' + (r.status === 'HABIS' ? 'wa' : 'lembut') + '" data-a="perpanjang" data-enr="' + e(r.enr_id) + '">' + ik('wa', 'k') + '<span class="sembunyi-hp">Link</span></button>' : UI2.sisaChip(r)) + '</div>';
-              }).join('') : MR.UI.kosong('Tidak ada yang mendesak', 'Semua paket masih aman.')) + '</div></div></section>' +
+            '<section class="kartu masuk-3" id="perhatian"><div class="kartu-kepala"><span class="ubin merah">' + ik('segitiga') + '</span><div class="tumpuk tumbuh"><h2>Perlu perhatian cepat</h2><p>Filter sekali klik</p></div></div>' +
+              '<div class="chip-perhatian">' + W.chipPerhatian(d, st.ph || 'perlu') + '</div><div class="kartu-isi" id="ph-isi"></div></section>' +
           '</div>' +
           '<div class="grid g-2-1 mt16">' +
             '<section class="kartu masuk-3"><div class="kartu-kepala"><span class="ubin">' + ik('tambahOrang') + '</span><div class="tumpuk tumbuh"><h2>Pendaftaran masuk</h2><p>' + d.pendaftaran_baru + ' menunggu verifikasi</p></div><a class="btn kecil hantu" href="#/pendaftaran">Semua ' + ik('kanan', 'k') + '</a></div>' +
@@ -70,10 +67,15 @@
         ctx.aksi({
           ke: function (t) { location.hash = t.dataset.h; },
           sesi: function (t) { var x = d.sesi.filter(function (s) { return s.enr_id === t.dataset.enr; })[0]; if (x) W.detailSesi(x, d.bisa); },
-          perpanjang: function (t) { W.buatLinkPerpanjangan(t.dataset.enr, t); }
+          perpanjang: function (t) { W.buatLinkPerpanjangan(t.dataset.enr, t); },
+          ph: function (t) { st.ph = t.dataset.v; MR.qsa('.chip-perhatian .chip', ctx.el).forEach(function (c) { c.classList.toggle('aktif', c === t); c.setAttribute('aria-pressed', c === t); }); isiPerhatian(); },
+          siswa: function (t) { W.detailSiswa(t.dataset.id); },
+          waSiswa: function (t) { W.pesanWA(t.dataset.id, t.dataset.jenis); },
+          infoKolam: function () { W.kelolaInfoKolam(function () { R.muatUlang(); }); }
         });
         ctx.on('keydown', '[role=button]', function (t, ev) { if (ev.key === 'Enter') t.click(); });
-        ctx.nanti(function () { UI2.hidupkan(ctx.el); });
+        function isiPerhatian() { var w = ctx.el.querySelector('#ph-isi'); if (!w) return; w.innerHTML = W.isiPerhatian(d, st.ph || 'perlu'); w.classList.remove('pudar'); void w.offsetWidth; w.classList.add('pudar'); }
+        ctx.nanti(function () { UI2.hidupkan(ctx.el); isiPerhatian(); });
       });
     }
   });
@@ -90,6 +92,47 @@
   };
 
   /* Link perpanjangan cepat → WhatsApp manual (wa.me) */
+  /* ---------- Perhatian cepat: 4 filter sekali klik ---------- */
+  W.chipPerhatian = function (d, aktif) {
+    var ph = d.perhatian || { habis3: [], absen2: [], belum_absen: [] };
+    return [['perlu', 'Perlu perpanjangan', d.perlu.length, ''], ['habis3', 'HABIS > 3 hari', ph.habis3.length, 'merah'], ['absen2', 'Izin/Hangus 2x', ph.absen2.length, 'kuning'], ['belum', 'Belum diabsen', ph.belum_absen.length, 'biru']].map(function (c) {
+      return '<button type="button" class="chip' + (c[0] === aktif ? ' aktif' : '') + '" data-a="ph" data-v="' + c[0] + '" aria-pressed="' + (c[0] === aktif) + '">' + (c[3] ? '<i class="titik-warna ' + c[3] + '"></i>' : '') + e(c[1]) + ' <b class="angka">' + c[2] + '</b></button>';
+    }).join('');
+  };
+  W.isiPerhatian = function (d, v) {
+    var ph = d.perhatian || { habis3: [], absen2: [], belum_absen: [] }, bisaWA = d.bisa.verifikasi || d.bisa.link;
+    function baris(av, judul, sub, kanan, klik) { return '<div class="item-ikon' + (klik ? ' item-klik' : '') + '"' + (klik || '') + '>' + av + '<div class="tumbuh" style="min-width:0"><b class="kecil satu-baris" style="display:block">' + judul + '</b><div class="kecil redup satu-baris">' + sub + '</div></div>' + (kanan || '') + '</div>'; }
+    var list = '';
+    if (v === 'perlu') list = d.perlu.map(function (r) {
+      var nama = r.peserta.map(function (p) { return p.nama; }).join(' & ');
+      return baris('<span class="avatar ' + (r.status === 'HABIS' ? '' : 'lembut') + '" style="' + (r.status === 'HABIS' ? 'background:#B91C1C' : '') + '">' + e(F.inisial(nama)) + '</span>', e(nama), e(r.paket) + ' · ' + (r.status === 'HABIS' ? 'HABIS ' + (r.hari_habis ? r.hari_habis + ' hari' : 'hari ini') : 'sisa ' + r.sisa + ' sesi'),
+        (d.bisa.link ? '<button type="button" class="btn kecil ' + (r.status === 'HABIS' ? 'wa' : 'lembut') + '" data-a="waSiswa" data-jenis="sisa" data-id="' + e((r.peserta[0] || {}).siswa_id) + '">' + ik('wa', 'k') + '<span class="sembunyi-hp">Pesan</span></button>' : UI2.sisaChip(r)));
+    }).join('');
+    if (v === 'habis3') list = ph.habis3.map(function (r) {
+      return baris('<span class="avatar" style="background:#B91C1C">' + e(F.inisial(r.nama)) + '</span>', e(r.nama), e(r.paket) + ' · HABIS sejak ' + r.hari_habis + ' hari lalu, belum diperpanjang',
+        bisaWA ? '<button type="button" class="btn kecil wa" data-a="waSiswa" data-jenis="sisa" data-id="' + e(r.siswa_id) + '">' + ik('wa', 'k') + '<span class="sembunyi-hp">Ingatkan</span></button>' : '');
+    }).join('');
+    if (v === 'absen2') list = ph.absen2.map(function (r) {
+      return baris(UI2.avatar(r.nama), e(r.nama), e(r.paket) + ' · ' + r.status.map(function (x) { return x; }).join(' → ') + ' · terakhir ' + e(F.tgl(r.terakhir)),
+        '<button type="button" class="btn kecil" data-a="siswa" data-id="' + e(r.siswa_id) + '">' + ik('kanan', 'k') + '<span class="sembunyi-hp">Detail</span></button>');
+    }).join('');
+    if (v === 'belum') list = ph.belum_absen.map(function (r) {
+      return baris('<span class="ubin biru" style="width:40px;height:40px">' + ik('jam', 'k') + '</span>', e(r.jam_mulai + '–' + r.jam_selesai) + ' · ' + e(r.nama), 'Coach ' + e(r.pelatih) + ' · ' + e(r.kolam || '') + ' · jam mulai sudah lewat',
+        '<a class="btn kecil" href="#/absensi">' + ik('absen', 'k') + '<span class="sembunyi-hp">Absensi</span></a>');
+    }).join('');
+    var kosong = { perlu: ['Tidak ada yang mendesak', 'Semua paket masih aman.'], habis3: ['Tidak ada paket HABIS > 3 hari', 'Semua paket HABIS sudah ditindaklanjuti.'], absen2: ['Tidak ada pola absen beruntun', 'Belum ada siswa yang Izin/Hangus 2x berturut-turut.'], belum: ['Semua sesi yang sudah mulai telah diabsen', 'Sesi berikutnya akan muncul di sini bila terlambat diabsen.'] }[v];
+    return list ? '<div class="daftar-ikon">' + list + '</div>' : MR.UI.kosong(kosong[0], kosong[1]);
+  };
+  /* ---------- Banner catatan kondisi kolam (dashboard, jadwal, portal pelatih & orang tua) ---------- */
+  W.bannerInfoKolam = function (list, o) {
+    o = o || {}; if (!list.length && !o.atur) return '';
+    var ikon = { info: 'info', waspada: 'segitiga', penting: 'segitiga' }, kelas = { info: '', waspada: 'waspada', penting: 'penting' };
+    return '<section class="info-kolam mt16' + (list.length ? '' : ' kosong') + '" aria-label="Kondisi kolam hari ini"><div class="ik-gelombang" aria-hidden="true"></div>' +
+      '<div class="info-kolam-kepala"><span class="ubin">' + ik('renang') + '</span><div class="tumpuk tumbuh"><b>Kondisi kolam hari ini</b><span class="kecil">' + (list.length ? list.length + ' catatan dari Admin' : 'Belum ada catatan — semua kolam dianggap normal') + '</span></div>' +
+      (o.atur ? '<button type="button" class="btn kecil" data-a="infoKolam">' + ik('pensil', 'k') + '<span class="sembunyi-hp">Atur info kolam</span></button>' : '') + '</div>' +
+      (list.length ? '<div class="info-kolam-daftar">' + list.map(function (i) { return '<div class="info-kolam-item ' + kelas[i.level] + '">' + ik(ikon[i.level] || 'info', 'k') + '<div><b>' + e(i.kolam) + '</b><span>' + e(i.pesan) + '</span></div></div>'; }).join('') + '</div>' : '') + '</section>';
+  };
+
   W.buatLinkPerpanjangan = function (enrId, tombol) {
     return MR.UI.kerja(tombol, function () { return API.T('daftar.linkBuat', { tipe: 'perpanjangan', enr_id: enrId, hari: 7 }); }).then(function (r) { W.tampilLink(r); }).catch(function () { });
   };

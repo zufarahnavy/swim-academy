@@ -93,7 +93,10 @@
       if (grup) { html += '<div class="sb-grup">' + e(grup) + '</div>'; grup = null; }
       html += '<a class="sb-item" href="#/' + m.id + '" data-menu="' + m.id + '" title="' + e(m.label) + '">' + ik(m.ikon) + '<span class="sb-lbl">' + e(m.label) + '</span>' + (m.lencana ? '<span class="sb-lencana" data-lencana="' + m.lencana + '" hidden></span>' : '') + '</a>';
     });
-    nav.innerHTML = html;
+    /* Muat pertama: gulir menu selalu dari atas (Beranda, Pendaftaran, Siswa, Jadwal terlihat). Bangun ulang: posisi gulir dipertahankan. */
+    var gulir = nav.dataset.siap ? nav.scrollTop : 0;
+    nav.innerHTML = html; nav.scrollTop = gulir; nav.dataset.siap = '1';
+    var sb = nav.closest('.sidebar'); if (sb && !nav.dataset.siap2) { sb.scrollTop = 0; nav.dataset.siap2 = '1'; }
     var ids = (BAWAH[me.peran] || []).filter(function (id) { return App.boleh(id); });
     bawah.innerHTML = ids.map(function (id) { var m = MENU.filter(function (x) { return x.id === id; })[0]; return '<a href="#/' + id + '" data-menu="' + id + '"><span class="ik-wadah">' + ik(m.ikon) + '</span>' + e(LABEL_BAWAH[id] || m.label) + '</a>'; }).join('') +
       (OA.indexOf(me.peran) >= 0 ? '<a href="javascript:void 0" data-menu-hp><span class="ik-wadah">' + ik('menu') + '</span>Menu</a>' : '<a href="javascript:void 0" data-a-profil><span class="ik-wadah">' + ik('orang') + '</span>Akun</a>');
@@ -287,6 +290,19 @@
       if (API.mode === 'demo') return API.panggil('pub.config', {}, { diam: true }).then(App.terapkanPublik).catch(function () { });
     });
   }
+
+  /* ---------- Pengaman loading: tidak ada indikator yang tertinggal saat jaringan putus / timeout ---------- */
+  (function () {
+    var mulaiAsli = MR.Muat.mulai, sejak = 0;
+    MR.Muat.mulai = function () { if (!MR.Muat.n) sejak = Date.now(); return mulaiAsli.apply(MR.Muat, arguments); };
+    setInterval(function () {
+      if (MR.Muat.n > 0 && Date.now() - sejak > 100000) { MR.Muat.n = 1; MR.Muat.selesai(); }   // > batas waktu permintaan + 1x ulang
+      MR.qsa('.btn.memuat').forEach(function (b) { var t = Number(b.dataset.memuatSejak || 0); if (!t) b.dataset.memuatSejak = Date.now(); else if (Date.now() - t > 100000) { b.classList.remove('memuat'); delete b.dataset.memuatSejak; } });
+      MR.qsa('.btn:not(.memuat)[data-memuat-sejak]').forEach(function (b) { delete b.dataset.memuatSejak; });
+    }, 5000);
+    W.addEventListener('offline', function () { MR.UI.toast('Koneksi internet terputus. Data tersimpan tetap ditampilkan.', 'warn'); });
+    W.addEventListener('online', function () { MR.UI.toast('Kembali online.', 'ok', { durasi: 2000 }); if (Sesi.token) MR.Router.segarkanDiam(); });
+  })();
 
   /* ---------- Sentuhan: riak cahaya air pada tombol & menu (300 ms) ---------- */
   var SEL_RIAK = '.btn.primer, .btn.gelap, .btn.wa, .btn.lembut, .sb-item, .bawah-nav a, .seg button';

@@ -17,7 +17,7 @@
         if (ctx.basi()) return;
         var b = d.bisa, tabs = [];
         if (b.tampilan) tabs.push({ v: 'identitas', label: 'Identitas', ikon: 'gedung' }, { v: 'tema', label: 'Tampilan', ikon: 'palet' }, { v: 'masuk', label: 'Halaman masuk', ikon: 'gambar' });
-        if (b.master) tabs.push({ v: 'paket', label: 'Paket & kategori', ikon: 'tag' }, { v: 'master', label: 'Kolam & pelatih', ikon: 'data' });
+        if (b.master) tabs.push({ v: 'paket', label: 'Paket latihan', ikon: 'renang' }, { v: 'kategori', label: 'Kategori kas', ikon: 'tag' }, { v: 'master', label: 'Kolam & pelatih', ikon: 'data' });
         if (b.form) tabs.push({ v: 'form', label: 'Form pendaftaran', ikon: 'formulir' });
         if (b.batas) tabs.push({ v: 'absensi', label: 'Absensi', ikon: 'jam' });
         if (b.sinkron) tabs.push({ v: 'sinkron', label: 'Sinkronisasi', ikon: 'awan' });
@@ -26,7 +26,7 @@
         ctx.el.innerHTML = '<div class="kepala-hal"><div class="judul"><h1>Pengaturan Aplikasi</h1><p>Perubahan tampilan & form tersimpan di backend lalu dipublikasikan ke GitHub Pages (snapshot v' + d.publik_versi + '). Harga & rekening hanya di menu Owner.</p></div><div class="aksi"><span class="chip-sinkron ' + (sk.status === 'Gagal' ? 'gagal' : /Menunggu/.test(sk.status) ? 'tunggu' : '') + '"><i></i>' + e(sk.status) + '</span></div></div>' +
           UI2.seg('tab', tabs, st.tab) + '<div id="atur-isi" class="mt16"></div>';
         var w = ctx.el.querySelector('#atur-isi');
-        ({ identitas: tabIdentitas, tema: tabTema, masuk: tabMasuk, paket: tabPaket, master: tabMaster, form: tabForm, absensi: tabAbsensi, sinkron: tabSinkron })[st.tab](ctx, w, d);
+        ({ identitas: tabIdentitas, tema: tabTema, masuk: tabMasuk, paket: tabPaket, kategori: tabKategori, master: tabMaster, form: tabForm, absensi: tabAbsensi, sinkron: tabSinkron })[st.tab](ctx, w, d);
         ctx.on('seg', '.seg[data-seg=tab]', function (s, ev) { st.tab = ev.detail.v; R.tampilkan({ diam: true, bingkai: true }); });
         ctx.nanti(function () { UI2.hidupkan(ctx.el); });
       });
@@ -107,7 +107,7 @@
       var p = MR.UI.proses('Mengunggah foto', berkas.map(function (x, i) { return 'Foto ' + (i + 1) + ' · ' + x.name; })); p.langkah(0);
       berkas.reduce(function (rantai, file, i) {
         return rantai.then(function () {
-          return UI2.bacaBerkas(file, { maksMB: 3, tipe: /^image\/(jpeg|png|webp)$/, pesanTipe: 'Format foto harus JPG, PNG, atau WEBP.', sisi: demo ? 1280 : 1920, mutu: demo ? 0.76 : 0.84, paksa: true })
+          return UI2.bacaBerkas(file, { maksMB: 3, tipe: /^image\/(jpeg|png|webp)$/, pesanTipe: 'Format foto harus JPG, PNG, atau WEBP.', sisi: demo ? 1280 : UI2.KOMPRES_SLIDE.sisi, mutu: demo ? 0.72 : UI2.KOMPRES_SLIDE.mutu, paksa: true })
             .then(function (b) { return API.T('atur.unggahSlide', { berkas: { nama: b.nama, mime: b.mime, base64: b.base64 } }); })
             .then(function (r) { L.slides.push(r.url); p.langkah && p.langkah(i + 1); });
         });
@@ -162,8 +162,7 @@
     w.innerHTML = '<div class="kartu pad"><div class="baris bungkus"><div class="tumpuk tumbuh"><b>Jenis paket</b><span class="kecil redup">Dipakai untuk kategori sesi & tarif honor (Home Visit otomatis jadi "HV …").</span></div></div><div class="baris bungkus mt12" id="jenis" style="gap:6px"></div><div class="baris mt12"><input class="inp" id="jenis-baru" placeholder="Jenis baru, mis. Aquababy" style="max-width:260px"><button type="button" class="btn" data-x="tambahJenis">' + ik('plus', 'k') + 'Tambah</button><button type="button" class="btn primer" data-x="simpanJenis">Simpan jenis</button></div></div>' +
       '<section class="kartu mt16"><div class="kartu-kepala"><div class="tumpuk tumbuh"><h2>Paket latihan</h2><p>Harga diatur Owner di menu Harga, Tarif & Aturan.</p></div><button type="button" class="btn kecil primer" data-x="paketBaru">' + ik('plus', 'k') + 'Paket</button></div>' +
       UI2.tabel({ baris: m.paket, kolom: [{ label: 'Paket', f: function (p) { return '<div class="tumpuk" style="gap:3px">' + UI2.lencana(p.kategori) + '<b>' + e(p.nama) + '</b></div>'; } }, { label: 'Sesi', kanan: true, k: 'jumlah_sesi' }, { label: 'Peserta', f: function (p) { return p.peserta_termasuk + (p.maks_peserta > p.peserta_termasuk ? '–' + p.maks_peserta : ''); } }, { label: 'Durasi', f: function (p) { return p.durasi_menit + ' mnt'; } }, { label: 'Status', f: function (p) { return UI2.status(p.aktif === 'T' ? 'Nonaktif' : 'Aktif'); } }, { label: '', f: function (p) { return '<button type="button" class="btn kecil" data-x="paket" data-id="' + e(p.paket_id) + '">' + ik('pensil', 'k') + 'Ubah</button>'; } }] }) + '</section>' +
-      '<section class="kartu mt16"><div class="kartu-kepala"><div class="tumpuk tumbuh"><h2>Kategori kas</h2><p>Kategori sistem (otomatis dari verifikasi) tidak bisa diubah.</p></div><button type="button" class="btn kecil primer" data-x="katBaru">' + ik('plus', 'k') + 'Kategori</button></div>' +
-      UI2.tabel({ baris: m.kategori_kas, kolom: [{ label: 'Nama', f: function (k) { return '<b>' + e(k.nama) + '</b>' + (k.sistem === 'Y' ? ' <span class="tag-kecil kunci">' + ik('gembok', 'k') + 'sistem</span>' : ''); } }, { label: 'Tipe', f: function (k) { return '<span class="status ' + (k.tipe === 'Pemasukan' ? 'ok' : 'habis') + ' polos">' + e(k.tipe) + '</span>'; } }, { label: 'Status', f: function (k) { return UI2.status(k.aktif === 'T' ? 'Nonaktif' : 'Aktif'); } }, { label: '', f: function (k) { return k.sistem === 'Y' ? '' : '<button type="button" class="btn kecil" data-x="kat" data-id="' + e(k.kategori_id) + '">' + ik('pensil', 'k') + 'Ubah</button>'; } }] }) + '</section>';
+      '';
     function chips() { w.querySelector('#jenis').innerHTML = jenis.map(function (j, i) { return '<span class="chip aktif">' + e(j) + '<button type="button" data-hj="' + i + '" style="background:none;border:0;color:#fff;cursor:pointer;padding:0 0 0 4px" aria-label="Hapus ' + e(j) + '">×</button></span>'; }).join(''); }
     chips();
     w.addEventListener('click', function (ev) {
@@ -172,8 +171,12 @@
       if (x === 'tambahJenis') { var v = w.querySelector('#jenis-baru').value.trim(); if (v && jenis.indexOf(v) < 0) jenis.push(v); w.querySelector('#jenis-baru').value = ''; chips(); }
       if (x === 'simpanJenis') MR.UI.kerja(b, function () { return API.T('atur.simpan', { bagian: 'jenis_paket', nilai: jenis }); }).then(function (r) { hasilSinkron(r); R.muatUlang(); }).catch(function () { });
       if (x === 'paketBaru' || x === 'paket') formMaster('Paket', x === 'paket' ? m.paket.filter(function (p) { return p.paket_id === b.dataset.id; })[0] : {}, d);
-      if (x === 'katBaru' || x === 'kat') formMaster('Kategori_Kas', x === 'kat' ? m.kategori_kas.filter(function (k) { return k.kategori_id === b.dataset.id; })[0] : {}, d);
     });
+  }
+  function tabKategori(ctx, w, d) {
+    w.innerHTML = '<div class="dua-kolom"><section class="kartu pad"><b>Kategori arus kas</b><p class="kecil redup">Dipakai di form Input transaksi. Admin juga bisa mengelolanya langsung dari halaman Arus Kas.</p><div id="kk-panel" class="mt12"></div></section>' +
+      '<aside class="lengket"><div class="kartu pad"><b>Kategori otomatis</b><p class="kecil redup mt8">Pendaftaran, Perpanjangan, Penambahan Biaya, dan Trial dicatat sistem saat pendaftaran diverifikasi, sehingga tidak ditampilkan di input manual. Ini mencegah pemasukan tercatat ganda.</p></div></aside></div>';
+    W.panelKategoriKas(w.querySelector('#kk-panel'), d.master.kategori_kas, {});
   }
   function tabMaster(ctx, w, d) {
     var m = d.master;

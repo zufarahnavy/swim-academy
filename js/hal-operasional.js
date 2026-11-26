@@ -12,6 +12,7 @@
     o = o || {}; var r = x.enr, a = x.absen, koreksi = !!a, b = x.batas, nama = r.peserta.map(function (p) { return p.nama; }).join(' & ');
     var habis = r.status === 'HABIS', tolak = habis && aturan.absensi_paket_habis !== 'sesi_lebih' && !koreksi;
     var pilihan = {}; (a ? a.peserta : r.peserta.map(function (p) { return { siswa_id: p.siswa_id, status: '' }; })).forEach(function (p) { pilihan[p.siswa_id] = p.status; });
+    if (o.awal) Object.keys(o.awal).forEach(function (k) { pilihan[k] = o.awal[k]; });
     var dihitungTeks = aturan.status_dihitung.join(' & ');
     var m = MR.UI.modal({ judul: (koreksi ? 'Koreksi absensi · ' : '') + nama, sub: e(x.jam_mulai ? x.jam_mulai + '–' + x.jam_selesai + ' · ' : '') + e(r.paket) + ' · ' + e(F.tglHari(b.tanggal)), isi:
       '<div class="baris bungkus" style="gap:6px">' + UI2.lencana(r.kategori) + UI2.sisaChip(r) + '<span class="kecil redup">' + ik('pin', 'k') + ' ' + e(r.kolam) + '</span></div>' +
@@ -38,15 +39,27 @@
       if (Object.keys(kosong).length) return MR.UI.tandaiGalat(m.el, kosong);
       var peserta = r.peserta.map(function (p) { return { siswa_id: p.siswa_id, status: pilihan[p.siswa_id] }; }), al = m.el.querySelector('[name=alasan]'), ct = m.el.querySelector('[name=catatan]');
       var aksi = koreksi ? ['absensi.koreksi', { absen_id: a.absen_id, peserta: peserta, alasan: al ? al.value.trim() : '' }] : ['absensi.simpan', { enr_id: x.enr_id, tanggal: b.tanggal, peserta: peserta, catatan: ct ? ct.value.trim() : '' }];
-      /* Optimistik: kartu langsung berubah, dikembalikan bila server menolak */
-      if (o.optimistik) o.optimistik(peserta);
-      MR.UI.kerja(t, function () { return API.T(aksi[0], aksi[1]); }, { form: m.el }).then(function (h) {
-        m.tutup();
+      function pesanHasil(h) {
         var e2 = h.enr, pesan = koreksi ? 'Koreksi tersimpan.' : (h.dihitung ? 'Absensi tersimpan · pertemuan ke-' + h.absen.pertemuan_ke : 'Tercatat Izin — sesi tidak dipotong.');
         if (!koreksi && e2.status === 'HABIS') pesan += ' Paket kini HABIS (' + e2.sesi_terpakai + '/' + e2.sesi_total + ').'; else if (!koreksi && e2.sisa === 1) pesan += ' Sisa 1 sesi.';
         MR.UI.toast(pesan, e2.status === 'HABIS' && !koreksi ? 'warn' : 'ok', { judul: h.sesi_lebih ? 'Sesi lebih' : '' });
+      }
+      /* Optimistic UI: lembar ditutup & kartu berubah seketika; server disinkronkan di latar.
+         Ditolak server (batas waktu, paket HABIS, dll.) → kartu kembali + tombol "Buka lagi" dengan pilihan yang sama. */
+      if (o.optimistik) {
+        o.optimistik(peserta); m.tutup();
+        MR.UI.toast((koreksi ? 'Koreksi' : 'Absensi') + ' ' + nama + ' dicatat · menyinkron…', 'info', { durasi: 2200 });
+        API.T(aksi[0], aksi[1], { diam: true }).then(function (h) { pesanHasil(h); if (o.selesai) o.selesai(h); else R.segarkanDiam(); }, function (er) {
+          if (o.batalOptimistik) o.batalOptimistik();
+          var awal = {}; peserta.forEach(function (p) { awal[p.siswa_id] = p.status; });
+          MR.UI.toast((er && er.message) || 'Gagal menyimpan absensi.', 'bahaya', { judul: 'Absensi belum tersimpan', durasi: 9000, aksi: { label: 'Buka lagi', fn: function () { W.lembarAbsen(x, aturan, Object.assign({}, o, { awal: awal })); } } });
+        });
+        return;
+      }
+      MR.UI.kerja(t, function () { return API.T(aksi[0], aksi[1]); }, { form: m.el }).then(function (h) {
+        m.tutup(); pesanHasil(h);
         if (o.selesai) o.selesai(h); else R.muatUlang();
-      }).catch(function () { if (o.batalOptimistik) o.batalOptimistik(); });
+      }).catch(function () { });
     });
     m.on('click', '[data-x=hapus]', function () {
       UI2.mintaTeks({ judul: 'Batalkan absensi ini?', pesan: 'Data lama ditandai "dikoreksi" (tidak dihapus permanen) dan sisa sesi dihitung ulang.', label: 'Alasan', ok: 'Batalkan absensi', bahaya: true }).then(function (al) {
@@ -65,7 +78,7 @@
         if (ctx.basi()) return;
         st.hari = st.hari || d.hariIni;
         var rg = d.ringkas;
-        ctx.el.innerHTML = '<div class="kepala-hal"><div class="judul"><h1>Jadwal Pelatih</h1><p>Slot mingguan per pelatih. Bentrok jam pelatih yang sama ditandai merah.</p></div><div class="aksi">' + (d.bolehKelola ? '<button type="button" class="btn primer" data-a="tambah" data-kunci="n">' + ik('plus') + 'Tambah slot</button>' : '') + '</div></div>' +
+        ctx.el.innerHTML = '<div class="kepala-hal"><div class="judul"><h1>Jadwal Pelatih</h1><p>Slot mingguan per pelatih. Bentrok jam pelatih yang sama ditandai merah.</p></div><div class="aksi">' + (d.bolehKelola ? '<button type="button" class="btn" data-a="infoKolam">' + ik('renang') + 'Info kolam</button><button type="button" class="btn primer" data-a="tambah" data-kunci="n">' + ik('plus') + 'Tambah slot</button>' : '') + '</div></div>' +
           '<div class="grid g4 kpi-baris stagger">' + UI2.kpi({ i: 0, label: 'Sesi per minggu', nilai: rg.sesi, ikon: 'kalender' }) + UI2.kpi({ i: 1, label: 'Pelatih bertugas', nilai: rg.pelatih, ikon: 'peluit', warna: 'ungu' }) + UI2.kpi({ i: 2, label: 'Slot kosong', nilai: rg.kosong, ikon: 'plus', warna: 'hijau', sub: 'Siap diisi siswa baru' }) + UI2.kpi({ i: 3, label: 'Bentrok', nilai: rg.bentrok, ikon: 'segitiga', warna: rg.bentrok ? 'merah' : 'navy', sub: rg.bentrok ? 'Periksa slot merah' : 'Tidak ada bentrok' }) + '</div>' +
           '<div class="kartu pad mt16"><div class="baris bungkus" style="gap:10px">' + UI2.seg('view', [{ v: 'minggu', label: 'Mingguan', ikon: 'grid' }, { v: 'harian', label: 'Harian', ikon: 'daftar' }, { v: 'pelatih', label: 'Beban pelatih', ikon: 'peluit' }], st.view) + '<span class="tumbuh"></span>' +
             '<select class="inp" data-f="coach" style="width:auto"><option value="">Semua pelatih</option>' + d.pelatih.map(function (c) { return '<option value="' + e(c.coach_id) + '"' + (st.coach === c.coach_id ? ' selected' : '') + '>' + e(c.nama) + '</option>'; }).join('') + '</select>' +
@@ -104,6 +117,7 @@
         ctx.aksi({
           hari: function (b) { st.hari = Number(b.dataset.h); gambar(); },
           tambah: function () { formSlot(d, {}); },
+          infoKolam: function () { W.kelolaInfoKolam(); },
           slot: function (t) { if (!d.bolehKelola) return; var x = d.rows.filter(function (y) { return y.jadwal_id === t.dataset.id; })[0]; if (x) formSlot(d, x); }
         });
         ctx.nanti(function () { gambar(); UI2.hidupkan(ctx.el); });
@@ -167,14 +181,22 @@
           UI2.hidupkan(w);
         }
         function sesiDari(t) { return d.sesi.filter(function (x) { return x.enr_id === t.dataset.enr; })[0]; }
+        function optimistikBaris(t) {
+          var baris = t.closest('tr, .kartu-baris, .sesi, li') || t.parentNode, asli = baris.outerHTML;
+          return {
+            optimistik: function () { baris.classList.add('menyinkron'); t.outerHTML = '<span class="status info"><span class="titik-air"><i></i><i></i><i></i></span>Menyimpan</span>'; },
+            batalOptimistik: function () { if (baris.isConnected) baris.outerHTML = asli; },
+            selesai: function () { R.segarkanDiam(); }
+          };
+        }
         ctx.on('seg', '.seg', function (s, ev) { st.saring = ev.detail.v; gambar(); });
         ctx.on('change', '[data-f=tanggal]', function (i) { if (i.value) { st.tanggal = i.value; R.tampilkan({ diam: true, bingkai: true }); } });
         ctx.on('change', '[data-f=coach]', function (s) { st.coach = s.value; R.tampilkan({ diam: true, bingkai: true }); });
         ctx.aksi({
           geser: function (b) { st.tanggal = Inti.util.geserTgl(st.tanggal, Number(b.dataset.n)); if (st.tanggal > d.hariIni) st.tanggal = d.hariIni; R.tampilkan({ diam: true, bingkai: true }); },
           kini: function () { st.tanggal = d.hariIni; R.tampilkan({ diam: true, bingkai: true }); },
-          input: function (t) { W.lembarAbsen(sesiDari(t), d.aturan); },
-          koreksi: function (t) { var x = sesiDari(t); W.lembarAbsen(x, d.aturan, { wajibAlasan: !x.batas.boleh, bolehHapus: d.bisa.koreksi }); },
+          input: function (t) { W.lembarAbsen(sesiDari(t), d.aturan, optimistikBaris(t)); },
+          koreksi: function (t) { var x = sesiDari(t); W.lembarAbsen(x, d.aturan, Object.assign(optimistikBaris(t), { wajibAlasan: !x.batas.boleh, bolehHapus: d.bisa.koreksi })); },
           riwayat: function (t) { W.riwayatPaket(t.dataset.enr); },
           batas: function () { aturBatas(b); },
           buka: function () { bukaKunci(d, {}); },
@@ -266,4 +288,45 @@
     f.berkas_f.addEventListener('change', function () { UI2.bacaBerkas(f.berkas_f.files[0], { maksMB: 20, tipe: /^(application\/pdf|image\/(png|jpe?g)|video\/)/, kompres: false, pesanTipe: 'Format harus PDF, gambar, atau video.' }).then(function (b) { berkas = b; }, function (er) { MR.UI.tandaiGalat(f, { berkas: er.message }); }); });
     m.el.querySelector('[data-ok]').onclick = function () { var v = UI2.baca(f); delete v.berkas_f; v.materi_id = x.materi_id; MR.UI.kerja(this, function () { return API.T('materi.simpan', { materi: v, berkas: berkas ? { nama: berkas.nama, mime: berkas.mime, base64: berkas.base64 } : null }); }, { form: f }).then(function () { m.tutup(); MR.UI.toast('Materi tersimpan.', 'ok'); R.muatUlang(); }).catch(function () { }); };
   }
+
+  /* ================= Info kondisi kolam (per kolam, per tanggal) ================= */
+  var PRESET_INFO = [['info', 'Semua kolam normal, latihan berjalan sesuai jadwal.'], ['waspada', 'Hujan deras — sesi sore diundur 30 menit.'], ['waspada', 'Kolam sedang pembersihan klorin, sesi dipindah ke jam berikutnya.'], ['penting', 'Kolam ditutup sementara hari ini. Admin akan menghubungi untuk jadwal pengganti.']];
+  W.kelolaInfoKolam = function (selesai) {
+    var berubah = false;
+    var m = MR.UI.laci({ judul: 'Info kondisi kolam', sub: 'Tampil sebagai banner di portal Pelatih & Orang Tua pada tanggal yang dipilih, lalu hilang sendiri.', isi: UI2.muatSebaris('Memuat catatan…'), kaki: false, saatTutup: function () { if (berubah && selesai) selesai(); } });
+    function muat(segar) {
+      API.Q('kolam.info', {}, { segar: segar }).then(function (d) {
+        if (m.tertutup) return;
+        var lvl = 'info';
+        m.isi.innerHTML = '<form class="form kartu pad" id="f-info" novalidate>' +
+          UI2.fld({ k: 'tanggal', label: 'Tanggal', tipe: 'date', v: d.hariIni, l: 'l3', attr: ' min="' + d.hariIni + '" max="' + Inti.util.geserTgl(d.hariIni, 30) + '"' }) +
+          '<div class="fld l3" data-k="kolam_id"><label>Kolam</label><select class="inp" name="kolam_id"><option value="">Semua kolam</option>' + d.kolam.map(function (k) { return '<option value="' + e(k.kolam_id) + '">' + e(k.nama) + '</option>'; }).join('') + '</select><span class="galat"></span></div>' +
+          '<div class="fld"><label>Tingkat</label>' + UI2.seg('level', [{ v: 'info', label: 'Info', ikon: 'info' }, { v: 'waspada', label: 'Waspada', ikon: 'segitiga' }, { v: 'penting', label: 'Penting', ikon: 'segitiga' }], lvl, 'lebar') + '</div>' +
+          UI2.fld({ k: 'pesan', label: 'Catatan', tipe: 'area', baris: 2, wajib: true, attr: ' maxlength="200"', ph: 'mis. Kolam Tirta hujan deras — sesi sore diundur 30 menit' }) +
+          '<div class="fld"><div class="baris bungkus" style="gap:6px">' + PRESET_INFO.map(function (p, i) { return '<button type="button" class="chip" data-preset="' + i + '">' + e(p[1].split(' —')[0].split(',')[0]) + '</button>'; }).join('') + '</div></div>' +
+          '<div class="fld"><button type="submit" class="btn primer lebar">' + ik('plus') + 'Simpan catatan</button></div></form>' +
+          '<div class="judul-seksi"><h2>Catatan 14 hari ke depan</h2></div>' +
+          (d.rows.length ? '<div class="daftar-ikon">' + d.rows.map(function (i) {
+            return '<div class="info-kolam-item ' + (i.level === 'info' ? '' : i.level) + '">' + ik(i.level === 'info' ? 'info' : 'segitiga', 'k') + '<div class="tumbuh"><b>' + e(F.tglHari(i.tanggal)) + ' · ' + e(i.kolam) + '</b><span>' + e(i.pesan) + '</span><small class="redup">oleh ' + e(i.oleh) + '</small></div>' +
+              (d.bisa ? '<button type="button" class="btn ikon kecil hantu" data-hapus="' + e(i.info_id) + '" aria-label="Hapus catatan">' + ik('sampah', 'k') + '</button>' : '') + '</div>';
+          }).join('') + '</div>' : MR.UI.kosong('Belum ada catatan', 'Semua kolam dianggap normal.'));
+        var f = m.el.querySelector('#f-info');
+        UI2.hidupkanSeg(f); f.addEventListener('seg', function (ev) { lvl = ev.detail.v; });
+        f.addEventListener('click', function (ev) {
+          var b = ev.target.closest('[data-preset]'); if (!b) return; var p = PRESET_INFO[Number(b.dataset.preset)];
+          f.pesan.value = p[1]; var t = f.querySelector('.seg [data-v="' + p[0] + '"]'); if (t) t.click();
+        });
+        f.addEventListener('submit', function (ev) {
+          ev.preventDefault(); var v = UI2.baca(f);
+          MR.UI.kerja(f.querySelector('[type=submit]'), function () { return API.T('kolam.infoSimpan', { tanggal: v.tanggal, kolam_id: v.kolam_id, level: lvl, pesan: v.pesan }); }, { form: f })
+            .then(function () { berubah = true; MR.UI.toast('Catatan kolam disimpan — tampil di portal Pelatih & Orang Tua.', 'ok'); muat(true); }).catch(function () { });
+        });
+      }).catch(function (er) { m.tutup(); MR.UI.galat(er); });
+    }
+    m.isi.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-hapus]'); if (!b) return;
+      MR.UI.kerja(b, function () { return API.T('kolam.infoHapus', { info_id: b.dataset.hapus }); }).then(function () { berubah = true; MR.UI.toast('Catatan dihapus.', 'ok'); muat(true); }).catch(function () { });
+    });
+    muat(false);
+  };
 })(window, document);

@@ -10,14 +10,17 @@
   R.daftar('hari-ini', {
     judul: 'Hari Ini', kerangka: 'dashboard', peran: ['pelatih'],
     render: function (ctx) {
-      return API.Q('dash.pelatih').then(function (d) {
+      /* Tahan sinyal lemah di pinggir kolam: tampil seketika dari cache perangkat, disegarkan di latar */
+      return API.Q('dash.pelatih', {}, { lokal: true }).then(function (d) {
         if (ctx.basi()) return;
-        var b = d.batas; API.setJamServer(b.sekarang_ms);
+        var b = d.batas;
         var sisa = b.batas_aktif ? b.batas_ms - API.jamServer() : null, belum = d.sesi.filter(function (x) { return !x.absen; }).length;
         ctx.el.innerHTML = '<div class="banner masuk">' + W.bannerOmbak() +
           '<span class="label-atas">' + ik('kalender', 'k') + e(F.tglHari(d.hariIni)) + '</span><h1>' + F.salam() + ', Coach ' + e(d.nama.split(' ')[0]) + '.</h1>' +
           '<p>' + (d.sesi.length ? d.sesi.length + ' sesi hari ini · ' + (belum ? belum + ' belum diabsen' : 'semua sudah tercatat ✓') : 'Tidak ada sesi terjadwal hari ini.') + (d.besok ? ' Besok ' + d.besok + ' sesi.' : '') + '</p>' +
           (b.batas_aktif ? (b.boleh ? '<div class="hitung-mundur">' + ik('jam') + '<span>Batas absensi ' + e(b.jam_batas) + ' WIB<br><small style="opacity:.8;font-weight:500">jam server, bukan jam HP</small></span><b data-hitung="' + b.batas_ms + '">' + F.durasi(sisa) + '</b></div>' : '<div class="hitung-mundur">' + ik('gembok') + '<span>Absensi hari ini sudah terkunci (' + e(b.jam_batas) + ' WIB). Minta Admin membuka kunci bila perlu.</span></div>') : '') + '</div>' +
+          (API.offline ? '<div class="peringatan warn mt16 offline">' + ik('awan') + '<div><b>Mode offline</b>Menampilkan jadwal tersimpan ' + e(F.relatif(Inti.util.waktuWIB(API.offline))) + '. Data diperbarui otomatis saat sinyal kembali.</div></div>' : '') +
+          W.bannerInfoKolam(d.info_kolam || []) +
           (d.belum_kemarin.length ? '<div class="peringatan bahaya mt16">' + ik('segitiga') + '<div><b>' + d.belum_kemarin.length + ' sesi kemarin belum diabsen</b>' + d.belum_kemarin.map(function (x) { return e(x.peserta) + (x.batas.boleh ? (x.batas.via_buka_kunci ? ' — kunci dibuka Admin' : '') : ' — terkunci'); }).join(' · ') + (d.belum_kemarin.some(function (x) { return x.batas.boleh; }) ? '<br><button type="button" class="btn kecil mt8" data-a="kemarin">Isi absensi kemarin</button>' : '') + '</div></div>' : '') +
           '<div class="grid g4 kpi-baris stagger mt16">' + UI2.kpi({ i: 0, label: 'Sesi hari ini', nilai: d.sesi.length, ikon: 'kalender' }) + UI2.kpi({ i: 1, label: 'Sudah diabsen', nilai: d.sesi.length - belum, ikon: 'cekBulat', warna: 'hijau' }) + UI2.kpi({ i: 2, label: 'Sesi bulan ini', nilai: d.sesi_bulan_ini, ikon: 'absen', warna: 'ungu', sub: 'Sesi dihitung untuk honor' }) + UI2.kpi({ i: 3, label: 'Besok', nilai: d.besok, ikon: 'jam', warna: 'oranye' }) + '</div>' +
           '<div class="judul-seksi"><h2>Sesi hari ini</h2><span class="tumbuh"></span><span class="kecil redup">Ketuk kartu untuk mengisi absensi</span></div>' +
@@ -33,8 +36,8 @@
             var asli = t.outerHTML;
             W.lembarAbsen(x, d.aturan, {
               optimistik: function (ps) { t.classList.add('selesai'); var s = t.querySelector('.status'); if (s) { s.className = 'status info'; s.innerHTML = '<span class="titik-air"><i></i><i></i><i></i></span>Menyimpan'; } },
-              batalOptimistik: function () { t.outerHTML = asli; },
-              selesai: function () { R.muatUlang(); }
+              batalOptimistik: function () { if (t.isConnected) t.outerHTML = asli; },
+              selesai: function () { R.segarkanDiam(); }
             });
           },
           kemarin: function () {
@@ -98,6 +101,7 @@
         st.anak = st.anak && d.anak.some(function (a) { return a.siswa_id === st.anak; }) ? st.anak : (d.anak[0] || {}).siswa_id;
         ctx.el.innerHTML = '<div class="banner masuk">' + W.bannerOmbak() + '<span class="label-atas">' + ik('renang', 'k') + 'Portal Orang Tua</span><h1>Halo, ' + e(d.nama.split(' ')[0]) + '!</h1><p>' + (d.anak.length > 1 ? d.anak.length + ' anak terhubung ke akun ini. ' : '') + 'Sisa sesi, jadwal, dan kehadiran diperbarui otomatis setiap pelatih mengisi absensi.</p>' +
           (d.kontak_admin ? '<div class="banner-aksi"><a class="btn putih" target="_blank" rel="noopener" href="' + waAdmin(d, 'Halo Admin ' + d.nama_app + ', saya orang tua dari ' + d.anak.map(function (a) { return a.nama; }).join(' & ') + '.') + '">' + ik('wa') + 'Hubungi Admin</a></div>' : '') + '</div>' +
+          W.bannerInfoKolam(d.info_kolam || []) +
           (d.anak.length > 1 ? '<div class="mt16">' + UI2.seg('anak', d.anak.map(function (a) { return { v: a.siswa_id, label: a.nama.split(' ')[0] }; }), st.anak) + '</div>' : '') + '<div id="anak-isi" class="mt16"></div>';
         function gambar() {
           var a = d.anak.filter(function (x) { return x.siswa_id === st.anak; })[0], w = ctx.el.querySelector('#anak-isi');

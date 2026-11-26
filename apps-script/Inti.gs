@@ -1,5 +1,5 @@
 /* =====================================================================
- * INTI SWIM ACADEMY — aturan bisnis & seluruh layanan (v1.1.0)
+ * INTI SWIM ACADEMY — aturan bisnis & seluruh layanan (v1.2.0)
  * Satu sumber dipakai di dua tempat dengan isi IDENTIK:
  *   apps-script/Inti.gs → backend Google Apps Script (data di Google Sheets)
  *   js/inti.js          → mode demo di browser (data contoh di localStorage)
@@ -8,9 +8,9 @@
  * ===================================================================== */
 var Inti = (function () {
   'use strict';
-  var VERSI_APP = '1.1.0';
+  var VERSI_APP = '1.2.0';
 
-  /* ---------- 1. Skema 26 sheet (PRD v1.1 + riwayat 10 versi pengaturan) ---------- */
+  /* ---------- 1. Skema 27 sheet (PRD v1.1 + riwayat 10 versi pengaturan + info kolam harian) ---------- */
   var SKEMA = {
     Config_Terkunci: { id: 'key', kolom: ['key', 'value', 'updated_by', 'updated_at'] },
     Harga_Paket: { id: 'harga_id', prefix: 'HRG', kolom: ['harga_id', 'paket_id', 'harga', 'biaya_tambahan_per_peserta', 'berlaku_mulai', 'updated_by', 'updated_at'], angka: ['harga', 'biaya_tambahan_per_peserta'] },
@@ -27,6 +27,7 @@ var Inti = (function () {
     Paket_Peserta: { id: 'pp_id', kolom: ['pp_id', 'enr_id', 'siswa_id'] },
     Absensi_Sesi: { id: 'absen_id', prefix: 'ABS', kolom: ['absen_id', 'enr_id', 'pertemuan_ke', 'tanggal', 'coach_id', 'kategori_sesi', 'kolam_id', 'dihitung', 'sesi_lebih', 'dibuat_oleh', 'waktu_server', 'via_buka_kunci', 'status_rekam', 'koreksi_dari', 'catatan'], angka: ['pertemuan_ke'] },
     Absensi_Peserta: { id: 'ap_id', kolom: ['ap_id', 'absen_id', 'siswa_id', 'status'] },
+    Info_Kolam: { id: 'info_id', prefix: 'IK', kolom: ['info_id', 'tanggal', 'kolam_id', 'level', 'pesan', 'aktif', 'dibuat_oleh', 'dibuat_at'] },
     Jadwal: { id: 'jadwal_id', prefix: 'JD', kolom: ['jadwal_id', 'coach_id', 'hari', 'jam_mulai', 'jam_selesai', 'enr_id', 'kolam_id', 'status_slot', 'catatan', 'aktif'], angka: ['hari'] },
     Buka_Kunci: { id: 'id', prefix: 'BK', kolom: ['id', 'coach_id', 'tanggal', 'alasan', 'dibuat_oleh', 'dibuat_at', 'berlaku_hingga'] },
     Transaksi: { id: 'trx_id', prefix: 'TRX', kolom: ['trx_id', 'tanggal', 'tipe', 'kategori_id', 'nama', 'nominal', 'penjelasan', 'enr_id', 'bukti_file_id', 'status', 'alasan_batal', 'dibuat_oleh', 'dibuat_at', 'diubah_oleh', 'diubah_at'], angka: ['nominal'] },
@@ -603,6 +604,8 @@ var Inti = (function () {
     if (t === 'Kategori_Kas') {
       if (!o.nama) f.nama = 'Wajib'; if (['Pemasukan', 'Pengeluaran'].indexOf(o.tipe) < 0) f.tipe = 'Pilih tipe';
       if (lama && lama.sistem === 'Y') { o.nama = lama.nama; o.tipe = lama.tipe; o.aktif = 'Y'; }
+      else if (o.nama && semua(ctx, 'Kategori_Kas').some(function (k) { return k.kategori_id !== (lama || {}).kategori_id && k.tipe === o.tipe && s(k.nama).toLowerCase() === o.nama.toLowerCase(); })) f.nama = 'Kategori "' + o.nama + '" sudah ada';
+      o.nama = s(o.nama).slice(0, 40);
     }
     if (Object.keys(f).length) throw Gagal('Periksa kembali isian.', 'VALIDATION', f);
     if (lama) { o[idk] = lama[idk]; ubah(ctx, t, [o]); } else { o[idk] = idBaru(ctx, t); if (t === 'Kategori_Kas') o.sistem = 'T'; tambah(ctx, t, [o]); }
@@ -940,6 +943,8 @@ var Inti = (function () {
     }
     var cur = enrs.filter(function (e) { return e.status !== 'Selesai'; })[0];
     o.jadwal = cur ? jadwalEnr(ctx, cur.enr_id) : [];
+    o.berikutnya = cur ? kejadianMendatang(ctx, cur.enr_id, 14).slice(0, 3) : [];   /* untuk pesan pengingat H-1 */
+    o.nama_app = atur(ctx, 'identitas').nama_app;
     o.bisa = { kelola: punya(ctx, 'siswa.kelola'), akun: punya(ctx, 'akun.kelola'), link: punya(ctx, 'pendaftaran.link') };
     return o;
   }
@@ -1381,11 +1386,12 @@ var Inti = (function () {
       komposisi: Object.keys(komposisi).map(function (k) { return { nama: k, nilai: komposisi[k] }; }).sort(function (a, b) { return b.nilai - a.nilai; }), tren: tren,
       kategori: semua(ctx, 'Kategori_Kas'), bolehInput: punya(ctx, 'kas.input'), bolehUbah: ctx.me.peran === 'owner', bolehEkspor: punya(ctx, 'laporan.ekspor'), tertutup: bulanTertutup(ctx, bulan + '-01') };
   }
-  function validasiTrx(ctx, x) {
+  function validasiTrx(ctx, x, lama) {
     var f = {}, o = {};
     o.tanggal = s(x.tanggal) || ctx.hariIni; if (!tglValid(o.tanggal) || o.tanggal > ctx.hariIni) f.tanggal = 'Tanggal tidak valid';
     o.tipe = x.tipe === 'Pengeluaran' ? 'Pengeluaran' : 'Pemasukan';
-    var k = cari(ctx, 'Kategori_Kas', x.kategori_id); if (!k || k.aktif === 'T') f.kategori_id = 'Pilih kategori'; else if (k.tipe !== o.tipe) f.kategori_id = 'Kategori untuk ' + k.tipe;
+    var k = cari(ctx, 'Kategori_Kas', x.kategori_id); if (!k || (k.aktif === 'T' && !(lama && lama.kategori_id === k.kategori_id))) f.kategori_id = 'Pilih kategori'; else if (k.tipe !== o.tipe) f.kategori_id = 'Kategori untuk ' + k.tipe;
+    else if (k.sistem === 'Y' && !(lama && lama.kategori_id === k.kategori_id)) f.kategori_id = 'Kategori otomatis — dicatat sistem saat verifikasi pendaftaran';
     o.kategori_id = s(x.kategori_id); o.nama = s(x.nama).slice(0, 100); if (!o.nama) f.nama = 'Wajib diisi';
     o.nominal = rp(x.nominal); if (o.nominal <= 0) f.nominal = 'Nominal harus lebih dari 0';
     o.penjelasan = s(x.penjelasan).slice(0, 300);
@@ -1405,7 +1411,7 @@ var Inti = (function () {
     var t = wajibAda(ctx, 'Transaksi', d.trx_id, 'Transaksi');
     if (t.status === 'batal') throw Gagal('Transaksi yang dibatalkan tidak dapat diubah.');
     if (s(d.alasan).length < 5) throw Gagal('Alasan perubahan wajib diisi (min. 5 karakter).', 'VALIDATION', { alasan: 'Wajib diisi' });
-    var o = validasiTrx(ctx, gabung(t, d.trx || {}));
+    var o = validasiTrx(ctx, gabung(t, d.trx || {}), t);
     o.trx_id = t.trx_id; o.diubah_oleh = oleh(ctx); o.diubah_at = kini(ctx);
     ubah(ctx, 'Transaksi', [o]);
     audit(ctx, 'KAS_UBAH', 'Transaksi:' + t.trx_id, { tanggal: t.tanggal, nominal: num(t.nominal), nama: t.nama, kategori_id: t.kategori_id }, { tanggal: o.tanggal, nominal: o.nominal, nama: o.nama, kategori_id: o.kategori_id, alasan: s(d.alasan) });
@@ -1515,7 +1521,7 @@ var Inti = (function () {
   }
 
   /* ---------- 17. Dashboard per peran ---------- */
-  function versiData(ctx) { return ctx.env.versiTabel ? ctx.env.versiTabel(['Paket_Aktif', 'Absensi_Sesi', 'Jadwal', 'Siswa', 'Pengaturan']) : String(ctx.now); }
+  function versiData(ctx) { return ctx.env.versiTabel ? ctx.env.versiTabel(['Paket_Aktif', 'Absensi_Sesi', 'Jadwal', 'Siswa', 'Pengaturan', 'Info_Kolam']) : String(ctx.now); }
   function aktivitasTerbaru(ctx, maks) {
     var a = [], sw = peta(ctx, 'Siswa'), co = peta(ctx, 'Pelatih'), kk = peta(ctx, 'Kategori_Kas'), ap = kelompok(semua(ctx, 'Absensi_Peserta'), function (p) { return p.absen_id; });
     urut(semua(ctx, 'Absensi_Sesi'), function (x) { return x.waktu_server; }, true).slice(0, 12).forEach(function (x) {
@@ -1548,7 +1554,8 @@ var Inti = (function () {
       pendaftaran: urut(semua(ctx, 'Pendaftaran_Masuk').filter(function (r) { return r.status === 'Baru'; }), function (r) { return r.dibuat_at; }, true).slice(0, 5).map(function (r) { var dd = jsonAman(r.data_json, {}), p = cari(ctx, 'Paket', dd.paket); return { id: r.id, tipe: r.tipe, nama: dd.nama, paket: p ? p.nama : '-', kategori: kategoriSesi(p), dibuat_at: r.dibuat_at, bukti: !!r.bukti_file_id }; }),
       pendaftaran_baru: semua(ctx, 'Pendaftaran_Masuk').filter(function (r) { return r.status === 'Baru'; }).length,
       aktivitas: aktivitasTerbaru(ctx, 8),
-      bisa: { link: punya(ctx, 'pendaftaran.link'), verifikasi: punya(ctx, 'pendaftaran.verifikasi'), kas: punya(ctx, 'kas.input'), buka: punya(ctx, 'absensi.buka_kunci'), input: punya(ctx, 'absensi.input') }
+      perhatian: perhatianCepat(ctx, enrs, sesi), info_kolam: infoKolamUntuk(ctx, ctx.hariIni, null), kolam: aktif(semua(ctx, 'Kolam')).map(function (k) { return { kolam_id: k.kolam_id, nama: k.nama_resmi }; }),
+      bisa: { link: punya(ctx, 'pendaftaran.link'), verifikasi: punya(ctx, 'pendaftaran.verifikasi'), kas: punya(ctx, 'kas.input'), buka: punya(ctx, 'absensi.buka_kunci'), input: punya(ctx, 'absensi.input'), info_kolam: punya(ctx, 'jadwal.kelola') }
     };
   }
   function kejadianMendatang(ctx, enrId, nHari) {
@@ -1565,17 +1572,18 @@ var Inti = (function () {
     var sesi = sesiTanggal(ctx, ctx.hariIni, ctx.me.coach_id), bulan = bulanDari(ctx.hariIni), besok = sesiTanggal(ctx, geserTgl(ctx.hariIni, 1), ctx.me.coach_id);
     var dihitung = semua(ctx, 'Absensi_Sesi').filter(function (a) { return a.coach_id === ctx.me.coach_id && a.status_rekam !== 'dikoreksi' && a.dihitung === 'Y' && bulanDari(a.tanggal) === bulan; }).length;
     var kemarin = geserTgl(ctx.hariIni, -1), kunciKemarin = sesiTanggal(ctx, kemarin, ctx.me.coach_id).filter(function (x) { return !x.absen; });
-    return { nama: ctx.me.nama, hariIni: ctx.hariIni, sesi: sesi, besok: besok.length, batas: infoBatas(ctx, ctx.hariIni, ctx.me.coach_id), sesi_bulan_ini: dihitung,
+    return { nama: ctx.me.nama, hariIni: ctx.hariIni, sesi: sesi, besok: besok.length, info_kolam: infoKolamUntuk(ctx, ctx.hariIni, null), batas: infoBatas(ctx, ctx.hariIni, ctx.me.coach_id), sesi_bulan_ini: dihitung,
       belum_kemarin: kunciKemarin.map(function (x) { return { enr_id: x.enr_id, peserta: x.enr.peserta.map(function (p) { return p.nama; }).join(' & '), batas: x.batas }; }),
       aturan: { status_dihitung: aturan(ctx).status_dihitung, absensi_paket_habis: aturan(ctx).absensi_paket_habis },
       materi: punya(ctx, 'materi.lihat') ? urut(aktif(semua(ctx, 'Materi')), function (m) { return m.dibuat_at; }, true).slice(0, 4).map(function (m) { return { materi_id: m.materi_id, judul: m.judul, jenis: m.jenis, kategori: m.kategori }; }) : [] };
   }
   function svcDashOrtu(ctx) {
     if (ctx.me.peran !== 'ortu') throw Gagal('Portal ini khusus orang tua.', 'FORBIDDEN');
-    var id = atur(ctx, 'identitas'), anak = [], jadwal = [], riwayat = [];
+    var id = atur(ctx, 'identitas'), anak = [], jadwal = [], riwayat = [], kolamAnak = {};
     ctx.me.siswa_ids.forEach(function (sid) {
       var sw = cari(ctx, 'Siswa', sid); if (!sw) return;
       var e = enrTerbaruSiswa(ctx, sid), r = e ? ringkasEnr(ctx, e) : null, nxt = e ? kejadianMendatang(ctx, e.enr_id, 21) : [];
+      if (e) { kolamAnak[e.kolam_id] = 1; semua(ctx, 'Jadwal').forEach(function (j) { if (j.enr_id === e.enr_id && j.aktif !== 'T') kolamAnak[j.kolam_id] = 1; }); }
       anak.push({ siswa_id: sid, nama: sw.nama, kategori: sw.kategori, usia: usia(sw.tgl_lahir, ctx.hariIni), kode_akses: sw.kode_akses, paket: r, berikutnya: nxt[0] || null });
       nxt.slice(0, 6).forEach(function (x) { x.siswa = sw.nama; x.kategori = r ? r.kategori : ''; jadwal.push(x); });
       (pesertaPeta(ctx).siswa[sid] || []).forEach(function (enrId) {
@@ -1583,7 +1591,7 @@ var Inti = (function () {
       });
     });
     return { nama: ctx.me.nama, anak: anak, jadwal: urut(jadwal, function (x) { return x.tanggal + x.jam_mulai; }), riwayat: urut(riwayat, function (x) { return x.tanggal; }, true).slice(0, 80),
-      kontak_admin: id.kontak_admin, nama_app: id.nama_app, versi: versiData(ctx) };
+      kontak_admin: id.kontak_admin, nama_app: id.nama_app, versi: versiData(ctx), info_kolam: infoKolamUntuk(ctx, ctx.hariIni, Object.keys(kolamAnak)) };
   }
   function svcOrtuVersi(ctx) { return { versi: versiData(ctx) }; }
 
@@ -1688,6 +1696,69 @@ var Inti = (function () {
     audit(ctx, 'PENGATURAN', 'login.unggah', '', f.id);
     return { url: f.url };
   }
+  /* ---------- 20. Perhatian cepat (dashboard) & info kondisi kolam harian ---------- */
+  var STATUS_ABSEN_TIDAK = ['Izin', 'Hangus'];
+  /* Tiga filter sekali klik di dashboard Admin/Owner */
+  function perhatianCepat(ctx, enrs, sesiHari) {
+    var b = bagWIB(ctx.now), menitKini = b.H * 60 + b.M;
+    var habis3 = enrs.filter(function (e) { return e.status === 'HABIS' && e.hari_habis > 3; }).sort(function (a, c) { return c.hari_habis - a.hari_habis; }).map(function (e) {
+      return { enr_id: e.enr_id, siswa_id: (e.peserta[0] || {}).siswa_id, nama: e.peserta.map(function (p) { return p.nama; }).join(' & '), paket: e.paket, kategori: e.kategori, hari_habis: e.hari_habis };
+    });
+    /* Izin/Hangus pada 2 pertemuan terakhir berturut-turut (per peserta, paket yang masih berjalan) */
+    var ap = kelompok(semua(ctx, 'Absensi_Peserta'), function (p) { return p.absen_id; }), absen2 = [];
+    var perEnr = kelompok(semua(ctx, 'Absensi_Sesi').filter(function (a) { return a.status_rekam !== 'dikoreksi'; }), function (a) { return a.enr_id; });
+    enrs.forEach(function (e) {
+      var rows = urut(perEnr[e.enr_id] || [], function (a) { return a.tanggal + a.waktu_server; }, true);
+      if (rows.length < 2) return;
+      e.peserta.forEach(function (p) {
+        var st = [];
+        rows.some(function (a) { var x = (ap[a.absen_id] || []).filter(function (q) { return q.siswa_id === p.siswa_id; })[0]; if (x) st.push({ status: x.status, tanggal: a.tanggal }); return st.length >= 2; });
+        if (st.length === 2 && STATUS_ABSEN_TIDAK.indexOf(st[0].status) >= 0 && STATUS_ABSEN_TIDAK.indexOf(st[1].status) >= 0)
+          absen2.push({ enr_id: e.enr_id, siswa_id: p.siswa_id, nama: p.nama, paket: e.paket, kategori: e.kategori, status: [st[0].status, st[1].status], terakhir: st[0].tanggal });
+      });
+    });
+    var belum = (sesiHari || []).filter(function (x) { return !x.absen && x.jam_mulai && menitDari(x.jam_mulai) <= menitKini; }).map(function (x) {
+      return { enr_id: x.enr_id, jam_mulai: x.jam_mulai, jam_selesai: x.jam_selesai, pelatih: x.pelatih, coach_id: x.coach_id, nama: x.enr.peserta.map(function (p) { return p.nama; }).join(' & '), kategori: x.enr.kategori, kolam: x.enr.kolam };
+    });
+    return { habis3: habis3, absen2: urut(absen2, function (x) { return x.terakhir; }, true), belum_absen: belum };
+  }
+
+  /* Info kolam: per tanggal & per kolam ('' = semua kolam); otomatis tidak tampil setelah tanggalnya lewat */
+  var LEVEL_INFO = ['info', 'waspada', 'penting'];
+  function infoKolamUntuk(ctx, tanggal, kolamIds) {
+    var kl = peta(ctx, 'Kolam'), rows;
+    /* sheet Info_Kolam dibuat setupAppEnvironment v1.2; bila belum dijalankan, dashboard tetap tampil tanpa banner */
+    try { rows = semua(ctx, 'Info_Kolam'); } catch (e) { return []; }
+    return urut(rows.filter(function (i) {
+      return i.aktif !== 'T' && i.tanggal === tanggal && (!kolamIds || !i.kolam_id || kolamIds.indexOf(i.kolam_id) >= 0);
+    }), function (i) { return LEVEL_INFO.indexOf(i.level) * -1 + '|' + i.dibuat_at; }).map(function (i) {
+      return { info_id: i.info_id, tanggal: i.tanggal, kolam_id: i.kolam_id, kolam: i.kolam_id ? ((kl[i.kolam_id] || {}).nama_resmi || i.kolam_id) : 'Semua kolam', level: i.level, pesan: i.pesan };
+    });
+  }
+  function svcInfoKolamList(ctx, d) {
+    var dari = tglValid(d.tanggal) ? d.tanggal : ctx.hariIni, sampai = geserTgl(dari, 14), kl = peta(ctx, 'Kolam');
+    var rows = semua(ctx, 'Info_Kolam').filter(function (i) { return i.aktif !== 'T' && i.tanggal >= dari && i.tanggal <= sampai; });
+    return { rows: urut(rows, function (i) { return i.tanggal + i.dibuat_at; }).map(function (i) { var o = salin(i); o.kolam = i.kolam_id ? ((kl[i.kolam_id] || {}).nama_resmi || i.kolam_id) : 'Semua kolam'; o.oleh = namaPengguna(ctx, i.dibuat_oleh); return o; }),
+      kolam: aktif(semua(ctx, 'Kolam')).map(function (k) { return { kolam_id: k.kolam_id, nama: k.nama_resmi }; }), hariIni: ctx.hariIni, bisa: punya(ctx, 'jadwal.kelola') };
+  }
+  function svcInfoKolamSimpan(ctx, d) {
+    var f = {}, o = { tanggal: s(d.tanggal) || ctx.hariIni, kolam_id: s(d.kolam_id), level: LEVEL_INFO.indexOf(d.level) >= 0 ? d.level : 'info', pesan: s(d.pesan).slice(0, 200) };
+    if (!tglValid(o.tanggal) || o.tanggal < ctx.hariIni || o.tanggal > geserTgl(ctx.hariIni, 30)) f.tanggal = 'Hari ini sampai 30 hari ke depan';
+    if (o.kolam_id && !cari(ctx, 'Kolam', o.kolam_id)) f.kolam_id = 'Kolam tidak dikenal';
+    if (o.pesan.length < 4) f.pesan = 'Tulis catatan (min. 4 karakter)';
+    if (Object.keys(f).length) throw Gagal('Periksa kembali catatan kolam.', 'VALIDATION', f);
+    var lama = d.info_id ? wajibAda(ctx, 'Info_Kolam', d.info_id, 'Catatan') : null;
+    if (lama) { o.info_id = lama.info_id; o.aktif = 'Y'; o.dibuat_oleh = lama.dibuat_oleh; o.dibuat_at = lama.dibuat_at; ubah(ctx, 'Info_Kolam', [o]); }
+    else { o.info_id = idBaru(ctx, 'Info_Kolam'); o.aktif = 'Y'; o.dibuat_oleh = oleh(ctx); o.dibuat_at = kini(ctx); tambah(ctx, 'Info_Kolam', [o]); }
+    audit(ctx, lama ? 'INFO_KOLAM_UBAH' : 'INFO_KOLAM_TAMBAH', 'Info_Kolam:' + o.info_id, lama ? { pesan: lama.pesan } : '', { tanggal: o.tanggal, kolam_id: o.kolam_id, pesan: o.pesan });
+    return { info: cari(ctx, 'Info_Kolam', o.info_id) };
+  }
+  function svcInfoKolamHapus(ctx, d) {
+    var i = wajibAda(ctx, 'Info_Kolam', d.info_id, 'Catatan');
+    ubah(ctx, 'Info_Kolam', [{ info_id: i.info_id, aktif: 'T' }]);
+    audit(ctx, 'INFO_KOLAM_HAPUS', 'Info_Kolam:' + i.info_id, { pesan: i.pesan }, '');
+    return { ok: true };
+  }
 
   /* ---------- 22. Tabel rute: aksi → izin → layanan ---------- */
   var OA = ['owner', 'admin'];
@@ -1723,6 +1794,9 @@ var Inti = (function () {
     'jadwal.list': { fn: svcJadwalList, izin: ['jadwal.lihat'] },
     'jadwal.simpan': { fn: svcJadwalSimpan, izin: ['jadwal.kelola'], tulis: true },
     'jadwal.hapus': { fn: svcJadwalHapus, izin: ['jadwal.kelola'], tulis: true },
+    'kolam.info': { fn: svcInfoKolamList, peran: OA },
+    'kolam.infoSimpan': { fn: svcInfoKolamSimpan, izin: ['jadwal.kelola'], tulis: true },
+    'kolam.infoHapus': { fn: svcInfoKolamHapus, izin: ['jadwal.kelola'], tulis: true },
 
     'absensi.hari': { fn: svcAbsensiHari, peran: ['owner', 'admin', 'pelatih'] },
     'absensi.simpan': { fn: svcAbsensiSimpan, izin: ['absensi.input'], tulis: true },
@@ -1784,11 +1858,11 @@ var Inti = (function () {
       };
       var data = r.tulis ? env.kunci(jalan) : jalan();
       kirimEmailTertunda(ctx);   // di luar kunci: tidak menahan penulis lain
-      return { ok: true, data: data, ms: env.sekarang() - t0, v: VERSI_APP, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
+      return { ok: true, data: data, ms: env.sekarang() - t0, t: env.sekarang(), v: VERSI_APP, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
     } catch (e) {
       if (e && e.__inti) {
         if (e.code === 'FORBIDDEN' && ctx.me) { try { env.kunci(function () { audit(ctx, 'DITOLAK', aksi, '', e.message); }); } catch (x) { } }
-        return { ok: false, error: { message: e.message, code: e.code, fields: e.fields || null, data: e.data || null }, ms: env.sekarang() - t0, v: VERSI_APP, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
+        return { ok: false, error: { message: e.message, code: e.code, fields: e.fields || null, data: e.data || null }, ms: env.sekarang() - t0, t: env.sekarang(), v: VERSI_APP, hv: ctx.me ? num(atur(ctx, 'hak_akses_versi')) : undefined };
       }
       return { ok: false, error: { message: 'Terjadi kesalahan di server: ' + (e && e.message ? e.message : String(e)), code: 'SERVER' }, ms: env.sekarang() - t0, v: VERSI_APP };
     }
@@ -1801,10 +1875,12 @@ var Inti = (function () {
     var ctx = konteksSistem(env), log = [], hasil = {};
     env.kunci(function () {
       if (!semua(ctx, 'Kategori_Kas').length) {
-        tambah(ctx, 'Kategori_Kas', [['Pendaftaran', 'Pemasukan', 'Y'], ['Perpanjangan', 'Pemasukan', 'Y'], ['Penambahan Biaya', 'Pemasukan', 'Y'], ['Trial', 'Pemasukan', 'Y'], ['Tiket Kolam', 'Pengeluaran', 'T'], ['Honor Pelatih', 'Pengeluaran', 'T'], ['Lainnya', 'Pengeluaran', 'T']]
+        tambah(ctx, 'Kategori_Kas', [['Pendaftaran', 'Pemasukan', 'Y'], ['Perpanjangan', 'Pemasukan', 'Y'], ['Penambahan Biaya', 'Pemasukan', 'Y'], ['Trial', 'Pemasukan', 'Y'], ['Tiket Kolam', 'Pengeluaran', 'T'], ['Honor Pelatih', 'Pengeluaran', 'T'], ['Lainnya', 'Pengeluaran', 'T'], ['Pemasukan Lain', 'Pemasukan', 'T']]
           .map(function (x, i) { return { kategori_id: 'KK-' + p2(i + 1), nama: x[0], tipe: x[1], aktif: 'Y', sistem: x[2] }; }));
         log.push('+ Kategori_Kas bawaan');
       }
+      /* v1.2: input manual tidak boleh memakai kategori otomatis → pastikan ada kategori Pemasukan manual */
+      if (!semua(ctx, 'Kategori_Kas').some(function (k) { return k.tipe === 'Pemasukan' && k.sistem !== 'Y'; })) { tambah(ctx, 'Kategori_Kas', [{ kategori_id: idBaru(ctx, 'Kategori_Kas'), nama: 'Pemasukan Lain', tipe: 'Pemasukan', aktif: 'Y', sistem: 'T' }]); log.push('+ Kategori_Kas Pemasukan Lain'); }
       if (!semua(ctx, 'Hak_Akses').length) { var m = { admin: {}, pelatih: {}, ortu: {} }; IZIN.forEach(function (i) { i.bawaan.forEach(function (p) { m[p][i.k] = true; }); }); tulisMatriks(ctx, m, 'Matriks bawaan'); log.push('+ Hak_Akses bawaan'); }
       if (!semua(ctx, 'Aturan_Bisnis').length) { tambah(ctx, 'Aturan_Bisnis', Object.keys(ATURAN_BAWAAN).map(function (k) { return { key: k, value: JSON.stringify(ATURAN_BAWAAN[k]), versi: 1, updated_by: 'sistem', updated_at: kini(ctx) }; })); log.push('+ Aturan_Bisnis bawaan'); }
       if (!semua(ctx, 'Form_Def').length) { tambah(ctx, 'Form_Def', [{ form_id: 'FRM-0001', versi: 1, skema_json: JSON.stringify(FORM_BAWAAN), status: 'aktif', updated_by: 'sistem', updated_at: kini(ctx) }]); log.push('+ Form_Def v1'); }

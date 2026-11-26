@@ -180,7 +180,7 @@
         var zona = ctx.el.querySelector('#unggah-bukti');
         if (zona) {
           var inp = zona.querySelector('input'), pilihBerkas = function (file) {
-            UI2.bacaBerkas(file).then(function (b) {
+            UI2.bacaBerkas(file, UI2.KOMPRES_BUKTI).then(function (b) {
               st.bukti = b; var pv = ctx.el.querySelector('#pratinjau-bukti');
               pv.innerHTML = '<div class="item-ikon mt8">' + (/^image/.test(b.mime) ? '<img src="' + b.url + '" alt="Pratinjau bukti" style="width:56px;height:56px;object-fit:cover;border-radius:10px">' : '<span class="ubin merah">' + ik('dokumen') + '</span>') + '<div class="tumbuh"><b class="kecil satu-baris">' + e(b.nama) + '</b><div class="kecil redup">' + Math.round(b.ukuran / 1024) + ' KB · siap dikirim</div></div><button type="button" class="btn ikon hantu kecil" data-a="hapusBukti" aria-label="Hapus">' + ik('x', 'k') + '</button></div>';
             }, function (er) { MR.UI.tandaiGalat(form, { bukti: er.message }); });

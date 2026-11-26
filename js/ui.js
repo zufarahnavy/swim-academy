@@ -143,6 +143,8 @@
     hariIni: function () { return Inti.util.tglWIB(API.jamServer()); },
     pilihBulan: function (nilai, nama) { return '<input class="inp" type="month" name="' + (nama || 'bulan') + '" value="' + e(nilai) + '" max="' + UI2.bulanIni() + '" style="width:auto;min-width:170px">'; },
     /* Unggah: kompres gambar di browser (maks 1600 px, JPEG 82%), validasi tipe & 5 MB */
+    /* Profil kompresi: bukti bayar 1200 px / JPEG 0,70 · slide halaman masuk 1600 px / 0,75 (diperkecil sebelum Base64) */
+    KOMPRES_BUKTI: { sisi: 1200, mutu: 0.70, paksa: true }, KOMPRES_SLIDE: { sisi: 1600, mutu: 0.75, paksa: true },
     bacaBerkas: function (file, o) {
       o = o || {}; var maks = (o.maksMB || 5) * 1024 * 1024, tipe = o.tipe || /^(image\/(png|jpe?g)|application\/pdf)$/;
       return new Promise(function (ok, tolak) {

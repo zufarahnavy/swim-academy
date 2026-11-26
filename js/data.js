@@ -16,7 +16,7 @@
     muat: function () { try { var s = JSON.parse(localStorage.getItem(K_SESI) || 'null'); if (s && s.kedaluwarsa > Date.now()) Object.assign(Sesi, s); else localStorage.removeItem(K_SESI); } catch (e) { } return !!Sesi.token; },
     simpan: function (d) { Sesi.token = d.token || Sesi.token; Sesi.me = d.me || Sesi.me; Sesi.izin = d.izin || Sesi.izin; Sesi.hakVersi = d.hakVersi != null ? d.hakVersi : Sesi.hakVersi; Sesi.kedaluwarsa = d.kedaluwarsa || Sesi.kedaluwarsa;
       try { localStorage.setItem(K_SESI, JSON.stringify({ token: Sesi.token, me: Sesi.me, izin: Sesi.izin, hakVersi: Sesi.hakVersi, kedaluwarsa: Sesi.kedaluwarsa })); } catch (e) { } },
-    hapus: function () { Sesi.token = ''; Sesi.me = null; Sesi.izin = []; try { localStorage.removeItem(K_SESI); sessionStorage.removeItem(K_CACHE); } catch (e) { } API.bersihkan(); },
+    hapus: function () { Sesi.token = ''; Sesi.me = null; Sesi.izin = []; try { localStorage.removeItem(K_SESI); sessionStorage.removeItem(K_CACHE); localStorage.removeItem(C.APP_ID + '_lokal'); } catch (e) { } API.bersihkan(); },
     punya: function (izin) { if (!Sesi.me) return false; if (Sesi.me.peran === 'owner') return true; return [].concat(izin).some(function (i) { return Sesi.izin.indexOf(i) >= 0; }); },
     peran: function () { return Sesi.me ? Sesi.me.peran : ''; }
   };
@@ -61,28 +61,58 @@
   }
 
   /* ---------- Satu-satunya pintu ---------- */
-  var BACA = /^(auth\.saya|pub\.|dash\.|analitik\.|daftar\.(link|masuk)List|siswa\.(list|detail)|jadwal\.list|absensi\.(hari|riwayat|bukaKunciList)|materi\.list|kas\.list|honor\.|tutup\.list|atur\.ambil|owner\.harga$|hak\.ambil|akun\.list|log\.|berkas\.)/;
+  var BACA = /^(auth\.saya|pub\.|dash\.|analitik\.|daftar\.(link|masuk)List|siswa\.(list|detail)|jadwal\.list|absensi\.(hari|riwayat|bukaKunciList)|materi\.list|kas\.list|honor\.|tutup\.list|atur\.ambil|owner\.harga$|hak\.ambil|akun\.list|log\.|kolam\.info$|berkas\.)/;
   function panggil(action, payload, o) {
     o = o || {}; if (!o.diam && W.MR) MR.Muat.mulai();
-    var tulis = !BACA.test(action), p = MODE === 'demo' ? lewatDemo(action, payload, tulis) : lewatLive(action, payload, !tulis);
+    var tulis = !BACA.test(action), t0 = Date.now(), p = MODE === 'demo' ? lewatDemo(action, payload, tulis) : lewatLive(action, payload, !tulis);
     return p.then(function (res) {
       if (!o.diam && W.MR) MR.Muat.selesai();
-      amati(res, action);
+      amati(res, action, t0);
       if (!res.ok) { var e = res.error || {}; throw { message: e.message || 'Terjadi kesalahan.', code: e.code, fields: e.fields, data: e.data }; }
       return res.data;
     }, function (er) { if (!o.diam && W.MR) MR.Muat.selesai(); throw er; });
   }
   var tIzin = null;
-  function amati(res, action) {
+  function amati(res, action, t0) {
+    /* Jam server WIB: selisih dihitung dari stempel waktu server (dikoreksi separuh waktu tempuh) & diingat antarkunjungan */
+    if (res && res.t && MODE === 'live') { var kini = Date.now(); API.setJamServer(Number(res.t) + (kini - (t0 || kini)) / 2, kini); }
     if (res.error && res.error.code === 'AUTH' && Sesi.token && action !== 'auth.masuk') { Sesi.hapus(); if (W.App) App.keluar('Sesi Anda berakhir. Silakan masuk kembali.'); return; }
     if (res.hv != null && Sesi.me && res.hv !== Sesi.hakVersi) { clearTimeout(tIzin); tIzin = setTimeout(API.segarkanIzin, 50); }
   }
 
   /* ---------- Cache SWR + dedupe + epoch ---------- */
+  var K_JAM = C.APP_ID + '_jam', K_LOKAL = C.APP_ID + '_lokal';
   var Cache = {}, Jalan = {}, epoch = 0, tCache = null, selisihServer = 0;
+  try { selisihServer = Number(localStorage.getItem(K_JAM)) || 0; } catch (e) { }
   try { var cs = JSON.parse(sessionStorage.getItem(K_CACHE) || 'null'); if (cs && cs.token) Cache = cs.c || {}; } catch (e) { }
   function simpanCache() { clearTimeout(tCache); tCache = setTimeout(function () { try { var o = {}; Object.keys(Cache).slice(-40).forEach(function (k) { o[k] = Cache[k]; }); sessionStorage.setItem(K_CACHE, JSON.stringify({ token: Sesi.token, c: o })); } catch (e) { } }, 500); }
   function kunci(action, payload) { return action + '|' + JSON.stringify(payload || {}); }
+  /* Dampak aksi tulis → awalan aksi baca yang cache-nya dianggap basi (sisanya tetap utuh).
+     Aksi yang tidak terdaftar (pengaturan, harga, hak akses, dll.) tetap membersihkan semua cache. */
+  var DAMPAK = {
+    'kas.': ['kas.', 'dash.admin', 'analitik.', 'tutup.'],
+    'absensi.': ['absensi.', 'dash.', 'siswa.', 'honor.', 'analitik.', 'jadwal.', 'tutup.'],
+    'siswa.': ['siswa.', 'dash.', 'jadwal.', 'absensi.hari', 'analitik.'],
+    'paket.': ['siswa.', 'dash.', 'jadwal.', 'absensi.', 'kas.', 'analitik.', 'honor.'],
+    'daftar.': ['daftar.', 'siswa.', 'dash.', 'kas.', 'jadwal.', 'absensi.hari', 'analitik.'],
+    'jadwal.': ['jadwal.', 'absensi.hari', 'dash.', 'siswa.detail'],
+    'kolam.': ['kolam.', 'dash.'],
+    'materi.': ['materi.', 'dash.pelatih'],
+    'tutup.': ['tutup.', 'kas.', 'honor.', 'dash.admin', 'analitik.'],
+    'master.': ['atur.', 'kas.', 'siswa.', 'jadwal.', 'daftar.', 'dash.', 'materi.', 'honor.'],
+    'akun.': ['akun.'],
+    'auth.gantiSandi': []
+  };
+  function basikan(action, khusus) {
+    var awal = khusus ? khusus.concat(['log.']) : null;
+    if (!awal) Object.keys(DAMPAK).some(function (p) { if (action.indexOf(p) === 0) { awal = DAMPAK[p].concat(['log.']); return true; } });
+    if (!awal) { Cache = {}; return; }
+    Object.keys(Cache).forEach(function (k) { if (awal.some(function (p) { return k.indexOf(p) === 0; })) delete Cache[k]; });
+    try { var lo = JSON.parse(localStorage.getItem(K_LOKAL) || 'null'); if (lo && lo.c) { Object.keys(lo.c).forEach(function (k) { if (awal.some(function (p) { return k.indexOf(p) === 0; })) delete lo.c[k]; }); localStorage.setItem(K_LOKAL, JSON.stringify(lo)); } } catch (e) { }
+  }
+  /* Cache lokal tahan-offline (localStorage), dipakai portal pelatih "Hari Ini" */
+  function lokalBaca(k) { try { var o = JSON.parse(localStorage.getItem(K_LOKAL) || '{}'); return o.u === (Sesi.me && Sesi.me.user_id) ? o.c[k] : null; } catch (e) { return null; } }
+  function lokalTulis(k, d) { try { var o = JSON.parse(localStorage.getItem(K_LOKAL) || '{}'), u = Sesi.me && Sesi.me.user_id; if (o.u !== u) o = { u: u, c: {} }; o.c[k] = { d: d, t: Date.now() }; localStorage.setItem(K_LOKAL, JSON.stringify(o)); } catch (e) { } }
   function ambil(k, action, payload, o) {
     var ik = epoch + '|' + k;
     if (Jalan[ik]) return Jalan[ik];
@@ -90,18 +120,48 @@
     Jalan[ik] = p; var bersih = function () { delete Jalan[ik]; }; p.then(bersih, bersih);
     return p;
   }
+  /* Baca tahan-offline: tampil seketika dari cache memori/localStorage, segarkan di latar bila ada jaringan */
+  function QLokal(k, action, payload, o, c) {
+    if (!c) { var l = lokalBaca(k); if (l) c = Cache[k] = { d: l.d, t: 0, h: JSON.stringify(l.d), lokal: l.t }; }
+    if (!c || o.segar) return ambil(k, action, payload, o).then(function (d) { lokalTulis(k, d); API.offline = false; return d; });
+    if (c.lokal || Date.now() - c.t > (o.umur || 30000)) {
+      ambil(k, action, payload, { diam: true }).then(function (d) {
+        lokalTulis(k, d); var tadi = API.offline; API.offline = false;
+        if ((tadi || JSON.stringify(d) !== c.h) && W.MR) MR.Router.segarkanDiam();
+      }).catch(function (er) {
+        if (er && er.code === 'NETWORK' && !API.offline) { API.offline = c.lokal || c.t || Date.now(); if (W.MR) MR.Router.segarkanDiam(); }
+      });
+    }
+    return Promise.resolve(c.d);
+  }
   var API = W.API = {
     mode: MODE,
     panggil: panggil,
     Q: function (action, payload, o) {
       o = o || {}; var k = kunci(action, payload), c = Cache[k];
+      if (o.lokal) return QLokal(k, action, payload, o, c);
       if (c && !o.segar) {
         if (Date.now() - c.t > (o.umur || 30000)) ambil(k, action, payload, { diam: true }).then(function (d) { if (JSON.stringify(d) !== c.h && W.MR) MR.Router.segarkanDiam(); }).catch(function () { });
         return Promise.resolve(c.d);
       }
       return ambil(k, action, payload, o);
     },
-    T: function (action, payload) { epoch++; return panggil(action, payload).then(function (d) { Cache = {}; simpanCache(); return d; }); },
+    /* o.basi = daftar awalan cache yang dibasikan (menimpa peta DAMPAK) bila pemanggil sudah memperbarui cache-nya sendiri */
+    T: function (action, payload, o) { epoch++; return panggil(action, payload, o).then(function (d) { basikan(action, o && o.basi); simpanCache(); return d; }); },
+    /* Optimistic UI: ubah data cache seketika; kembalikan fungsi pemulih (rollback) */
+    ubahCache: function (cocok, fn) {
+      var simpan = {};
+      Object.keys(Cache).forEach(function (k) {
+        if (!cocok(k)) return; simpan[k] = Cache[k];
+        var d = JSON.parse(Cache[k].h); try { fn(d, k); } catch (e) { return; }
+        Cache[k] = { d: d, t: Cache[k].t, h: JSON.stringify(d), optimistik: true };
+      });
+      simpanCache();
+      return function pulihkan() { Object.keys(simpan).forEach(function (k) { Cache[k] = simpan[k]; }); simpanCache(); };
+    },
+    kunci: kunci,
+    offline: false,
+    lokalBersihkan: function () { try { localStorage.removeItem(K_LOKAL); } catch (e) { } },
     tersimpan: function (action, payload) { var c = Cache[kunci(action, payload)]; return c ? c.d : null; },
     bersihkan: function () { Cache = {}; epoch++; try { sessionStorage.removeItem(K_CACHE); } catch (e) { } },
     prefetch: function (daftar) {
@@ -123,6 +183,6 @@
     },
     resetDemo: function () { try { localStorage.removeItem(K_DEMO); } catch (e) { } demoEnv = null; API.bersihkan(); },
     jamServer: function () { return MODE === 'demo' && demoEnv ? demoEnv.sekarang() : Date.now() + selisihServer; },
-    setJamServer: function (ms) { if (MODE === 'live' && ms) selisihServer = Number(ms) - Date.now(); }
+    setJamServer: function (ms, kini) { if (MODE === 'live' && ms) { selisihServer = Math.round(Number(ms) - (kini || Date.now())); try { localStorage.setItem(K_JAM, String(selisihServer)); } catch (e) { } } }
   };
 })(window);

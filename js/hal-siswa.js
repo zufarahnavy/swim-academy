@@ -169,7 +169,8 @@
               { label: 'Pelatih', f: function (s) { return s.paket ? e(s.paket.pelatih) : ''; } },
               { label: 'Kolam', f: function (s) { return s.paket ? e(s.paket.kolam_singkat || s.paket.kolam) : ''; } },
               { label: 'Status', f: function (s) { return s.paket && s.status !== 'Nonaktif' ? UI2.sisaChip(s.paket) : UI2.status(s.status); } },
-              { label: 'Orang tua', f: function (s) { return '<span class="tumpuk"><span class="kecil">' + e(s.nama_ortu || '-') + '</span><small class="redup angka">' + e(s.kontak_ortu || '') + '</small></span>'; } }
+              { label: 'Orang tua', f: function (s) { return '<span class="tumpuk"><span class="kecil">' + e(s.nama_ortu || '-') + '</span><small class="redup angka">' + e(s.kontak_ortu || '') + '</small></span>'; } },
+              { label: 'Pesan', f: function (s) { return s.kontak_ortu ? '<button type="button" class="btn ikon kecil wa" data-a="wa" data-id="' + e(s.siswa_id) + '" aria-label="Pesan WhatsApp ke orang tua ' + e(s.nama) + '" title="Pengingat jadwal / sisa sesi">' + ik('wa', 'k') + '</button>' : ''; } }
             ] }) + '</div>';
           UI2.hidupkan(w);
         }
@@ -177,6 +178,7 @@
         ctx.on('change', 'select[data-f]', function (s) { st[s.dataset.f] = s.value; gambar(); });
         ctx.on('seg', '.seg', function (s, ev) { st.tampil = ev.detail.v; MR.Pref.simpan('siswa_tampil', st.tampil); gambar(); });
         ctx.aksi({
+          wa: function (b, ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); W.pesanWA(b.dataset.id); },
           status: function (b) { st.status = b.dataset.v; MR.qsa('.chip', ctx.el).forEach(function (c) { c.classList.toggle('aktif', c === b); }); gambar(); },
           buka: function (t) { W.detailSiswa(t.dataset.id); },
           tambah: function () { formSiswa(); },
@@ -202,16 +204,21 @@
   }
 
   /* Detail siswa (laci lebar) — dipakai dari mana saja */
-  W.detailSiswa = function (id) {
-    var m = MR.UI.laci({ lebar: true, judul: 'Memuat…', isi: UI2.muatSebaris('Mengambil data siswa…'), kaki: false });
+  var laciDetail = null;
+  /* lama = laci yang sudah terbuka → isinya diperbarui di tempat (tanpa tutup-buka ulang) */
+  W.detailSiswa = function (id, lama) {
+    var m = lama || MR.UI.laci({ lebar: true, judul: 'Memuat…', isi: UI2.muatSebaris('Mengambil data siswa…'), kaki: false, saatTutup: function () { if (laciDetail === m) laciDetail = null; } });
+    m._id = id; laciDetail = m;
     API.Q('siswa.detail', { siswa_id: id }).then(function (d) {
+      if (m.tertutup) return;
+      m._data = d;
       var s = d.siswa, aktif = d.paket.filter(function (p) { return p.status !== 'Selesai'; })[0], b = d.bisa;
       m.el.querySelector('.ov-kepala h2').textContent = s.nama;
       m.isi.innerHTML = '<div class="baris" style="gap:14px">' + UI2.avatar(s.nama, 'besar') + '<div class="tumpuk tumbuh"><b style="font:700 18px var(--f-judul)">' + e(s.nama) + '</b><span class="redup kecil">' + e(s.kategori) + (d.usia != null ? ' · ' + d.usia + ' tahun' : '') + ' · ' + e(s.jenis_kelamin || '-') + ' · lahir ' + e(F.tgl(s.tgl_lahir)) + '</span>' +
         '<div class="baris bungkus mt8" style="gap:6px">' + (s.kode_akses ? '<button type="button" class="chip" data-x="salinKode">' + ik('kunci', 'k') + e(s.kode_akses) + '</button>' : '') + (s.aktif === 'T' ? '<span class="status netral">Nonaktif</span>' : '') + '</div></div>' +
         (b.kelola ? '<button type="button" class="btn kecil" data-x="edit">' + ik('pensil', 'k') + 'Ubah data</button>' : '') + '</div>' +
         (d.ortu || s.nama_ortu ? '<div class="kartu pad mt16"><div class="baris"><span class="ubin hijau">' + ik('orang') + '</span><div class="tumpuk tumbuh"><b class="kecil">' + e(s.nama_ortu || (d.ortu || {}).nama || '-') + '</b><span class="kecil redup angka">' + e(s.kontak_ortu || '') + (s.email_ortu ? ' · ' + e(s.email_ortu) : '') + '</span><span class="kecil redup">Portal: ' + (d.ortu && d.ortu.login_terakhir ? 'terakhir masuk ' + e(F.relatif(d.ortu.login_terakhir)) : 'belum pernah masuk') + '</span></div>' +
-          (s.kontak_ortu ? '<a class="btn kecil wa" target="_blank" rel="noopener" href="' + UI2.waLink(s.kontak_ortu, 'Halo ' + (s.nama_ortu || '') + ', kami dari ' + App.publik.nama_app + '.') + '">' + ik('wa', 'k') + '</a>' : '') +
+          (s.kontak_ortu ? '<button type="button" class="btn kecil wa" data-x="pesanWA" aria-label="Kirim pesan WhatsApp">' + ik('wa', 'k') + '<span class="sembunyi-hp">Pesan</span></button>' : '') +
           (b.akun && d.ortu ? '<button type="button" class="btn kecil" data-x="resetPin">' + ik('kunci', 'k') + '<span class="sembunyi-hp">Reset PIN</span></button>' : '') + '</div></div>' : '') +
         (s.catatan ? '<div class="peringatan info mt12">' + ik('info') + '<div><b>Catatan</b>' + e(s.catatan) + '</div></div>' : '') +
         '<div class="judul-seksi"><h2>Paket</h2><span class="tumbuh"></span>' + (b.kelola ? '<button type="button" class="btn kecil primer" data-x="paketBaru">' + ik('plus', 'k') + (aktif ? 'Perpanjang' : 'Paket baru') + '</button>' : '') + '</div>' +
@@ -225,9 +232,12 @@
             '</div>';
         }).join('') : '<div class="kartu pad">' + MR.UI.kosong('Belum ada paket', 'Tambahkan paket untuk mulai menjadwalkan latihan.') + '</div>') +
         (d.jadwal.length ? '<div class="judul-seksi"><h2>Jadwal mingguan</h2></div><div class="daftar-ikon">' + d.jadwal.map(function (j) { return '<div class="item-ikon"><span class="ubin">' + ik('kalender') + '</span><div class="tumbuh"><b class="kecil">' + e(j.nama_hari) + ', ' + e(j.jam_mulai) + '–' + e(j.jam_selesai) + '</b><div class="kecil redup">' + e(j.pelatih) + ' · ' + e(j.kolam) + '</div></div></div>'; }).join('') + '</div>' : '');
+      if (m._pasang) return; m._pasang = 1;
       m.on('click', '[data-x]', function (t) {
+        var d = m._data, s = d.siswa, aktif = d.paket.filter(function (q) { return q.status !== 'Selesai'; })[0];
         var x = t.dataset.x, enr = t.dataset.enr, p = d.paket.filter(function (q) { return q.enr_id === enr; })[0];
         if (x === 'salinKode') UI2.salin(s.kode_akses, 'Kode akses disalin.');
+        if (x === 'pesanWA') W.pesanWA(s.siswa_id);
         if (x === 'edit') formSiswa(s);
         if (x === 'paketBaru') formPaket([s], aktif);
         if (x === 'ubahPaket') ubahPaket(p);
@@ -242,6 +252,26 @@
     var m = MR.UI.modal({ judul: ortu ? 'PIN baru' : 'Sandi sementara', sempit: true, sub: 'Hanya ditampilkan sekali. Kirim langsung ke pemilik akun.', isi: '<div class="kotak-kode" style="justify-content:center;font-size:24px">' + e(r.rahasia) + '</div>', kaki: '<button type="button" class="btn" data-x="salin">' + ik('salin', 'k') + 'Salin</button>' + (r.kontak ? '<a class="btn wa" target="_blank" rel="noopener" href="' + UI2.waLink(r.kontak, teks) + '">' + ik('wa', 'k') + 'Kirim via WA</a>' : '') });
     m.on('click', '[data-x=salin]', function () { UI2.salin(r.rahasia); });
   };
+  function segarkanDetail(id) { if (laciDetail && !laciDetail.tertutup && laciDetail._id === id) W.detailSiswa(id, laciDetail); else { MR.UI.tutupSemua(); W.detailSiswa(id); } }
+  /* Optimistic UI: detail & daftar siswa berubah seketika; server di latar; gagal → data semula + "Buka lagi" */
+  function ubahOptimistik(s, v, f, m) {
+    var lokal = {};
+    if (!String(v.nama || '').trim()) lokal.nama = 'Wajib diisi';
+    if (!Inti.util.hpValid(Inti.util.hp08(v.kontak_ortu || ''))) lokal.kontak_ortu = 'Nomor WhatsApp tidak valid';
+    if (Object.keys(lokal).length) { MR.UI.tandaiGalat(f, lokal); return; }
+    var baru = { nama: v.nama.trim(), jenis_kelamin: v.jenis_kelamin, tgl_lahir: v.tgl_lahir, kategori: v.kategori, nama_ortu: v.nama_ortu, kontak_ortu: Inti.util.hp08(v.kontak_ortu), email_ortu: v.email_ortu, aktif: v.aktif, catatan: v.catatan };
+    var pulihkan = API.ubahCache(function (k) { return k.indexOf('siswa.detail|') === 0 || k.indexOf('siswa.list|') === 0; }, function (d) {
+      if (d.siswa && d.siswa.siswa_id === s.siswa_id) Object.assign(d.siswa, baru);
+      (d.rows || []).forEach(function (r) { if (r.siswa_id === s.siswa_id) Object.keys(baru).forEach(function (k) { if (k in r) r[k] = baru[k]; }); });
+    });
+    m.tutup(); segarkanDetail(s.siswa_id);
+    requestAnimationFrame(function () { setTimeout(function () { R.tampilkan({ diam: true }); }, 0); });   /* laci detail dilukis dulu, daftar di belakangnya menyusul */
+    MR.UI.toast('Data ' + baru.nama + ' disimpan.', 'ok');
+    API.T('siswa.simpan', { siswa: v }, { diam: true }).then(function () { R.segarkanDiam(); }, function (er) {
+      pulihkan(); R.segarkanDiam(); segarkanDetail(s.siswa_id);
+      MR.UI.toast((er && er.message) || 'Gagal menyimpan data siswa.', 'bahaya', { judul: 'Perubahan belum tersimpan', durasi: 9000, aksi: { label: 'Buka lagi', fn: function () { formSiswa(Object.assign({}, s, v)); } } });
+    });
+  }
   function formSiswa(s) {
     s = s || {}; var baru = !s.siswa_id;
     var m = MR.UI.modal({ judul: baru ? 'Tambah siswa' : 'Ubah data siswa', sub: baru ? 'Akun orang tua dibuat otomatis (satu nomor WA = satu akun, saudara terhubung).' : 'Perubahan nama & tanggal lahir tercatat di log audit.', isi: '<form class="form">' +
@@ -255,6 +285,7 @@
     f.tgl_lahir.addEventListener('change', function () { var u = Inti.util.usia(f.tgl_lahir.value, UI2.hariIni()); if (u != null) f.kategori.value = u >= 15 ? 'Dewasa' : 'Anak'; });
     m.el.querySelector('[data-ok]').onclick = function () {
       var v = UI2.baca(f); v.siswa_id = s.siswa_id;
+      if (!baru) { ubahOptimistik(s, v, f, m); return; }
       MR.UI.kerja(this, function () { return API.T('siswa.simpan', { siswa: v }); }, { form: f }).then(function (r) {
         m.tutup(); R.muatUlang();
         if (!baru) { MR.UI.toast('Data siswa disimpan.', 'ok'); MR.UI.tutupSemua(); W.detailSiswa(s.siswa_id); return; }
@@ -307,4 +338,58 @@
       m.el.querySelector('[data-ok]').onclick = function () { var f = m.el.querySelector('form'), v = UI2.baca(f); v.enr_id = p.enr_id; MR.UI.kerja(this, function () { return API.T('paket.ubah', v); }, { form: f }).then(function () { m.tutup(); MR.UI.toast('Paket diperbarui.', 'ok'); MR.UI.tutupSemua(); R.muatUlang(); }).catch(function () { }); };
     });
   }
+
+  /* ================= Generator pesan WhatsApp (wa.me manual) =================
+     Pengingat jadwal H-1 & peringatan sisa sesi/HABIS + link perpanjangan resmi.
+     Teks bisa disunting sebelum dikirim; dikirim lewat WhatsApp Admin sendiri. */
+  W.pesanWA = function (siswaId, jenisAwal) {
+    var m = MR.UI.modal({ judul: 'Pesan WhatsApp', sub: 'Menyusun pesan…', isi: UI2.muatSebaris('Mengambil jadwal & paket siswa…'), kaki: '<button type="button" class="btn" data-tutup>Tutup</button>' });
+    API.Q('siswa.detail', { siswa_id: siswaId }).then(function (d) {
+      if (m.tertutup) return;
+      var sw = d.siswa, p = d.paket.filter(function (x) { return x.status !== 'Selesai'; })[0] || d.paket[0] || null, nx = (d.berikutnya || [])[0] || null, app = d.nama_app || App.publik.nama_app, link = '';
+      var sapaan = 'Halo Bapak/Ibu ' + (sw.nama_ortu || '').split(' ')[0];
+      var besok = Inti.util.geserTgl(UI2.hariIni(), 1);
+      var jenis = jenisAwal || (p && (p.status === 'HABIS' || p.sisa <= 1) ? 'sisa' : 'h1');
+      function teksH1() {
+        if (!nx) return '';
+        var kapan = nx.tanggal === besok ? 'besok' : nx.tanggal === UI2.hariIni() ? 'hari ini' : 'pada';
+        return sapaan.trim() + ' 👋\nMengingatkan jadwal latihan renang *' + sw.nama + '* ' + kapan + ':\n' +
+          '📅 ' + F.tglHari(nx.tanggal) + '\n⏰ ' + nx.jam_mulai + '–' + nx.jam_selesai + ' WIB\n📍 ' + nx.kolam + '\n👤 Coach ' + nx.pelatih + '\n\n' +
+          'Mohon hadir 10 menit lebih awal ya. Bila berhalangan, mohon kabari kami sebelum jadwal. Terima kasih 🙏\n— ' + app;
+      }
+      function teksSisa() {
+        if (!p) return '';
+        var awal = p.status === 'HABIS' ? 'paket *' + p.paket + '* ' + sw.nama + ' sudah selesai (' + p.sesi_terpakai + '/' + p.sesi_total + ' sesi). Terima kasih atas semangat latihannya! 🏊'
+          : 'sisa sesi paket *' + p.paket + '* ' + sw.nama + ' tinggal *' + p.sisa + ' sesi* (' + p.sesi_terpakai + '/' + p.sesi_total + ' terpakai).';
+        return sapaan.trim() + ',\n' + awal.charAt(0).toUpperCase() + awal.slice(1) + '\n\n' +
+          'Agar jadwal latihan tidak terputus, silakan perpanjang paket melalui link resmi berikut:\n' + (link || '[link perpanjangan]') + '\n\nAda pertanyaan? Cukup balas pesan ini ya. Terima kasih 🙏\n— ' + app;
+      }
+      function susun() {
+        var t = jenis === 'h1' ? teksH1() : teksSisa(), area = m.el.querySelector('[name=pesan]');
+        area.value = t; perbarui();
+        m.el.querySelector('#wa-catatan').innerHTML = jenis === 'h1' ? (nx ? ik('kalender', 'k') + ' Sesi berikutnya: ' + e(F.tglHari(nx.tanggal)) + ' · ' + e(nx.jam_mulai) : '<span class="teks-bahaya">' + ik('info', 'k') + ' Belum ada jadwal dalam 14 hari ke depan.</span>')
+          : (p ? UI2.sisaChip(p) + (d.bisa.link && p.enr_id ? (link ? ' <span class="status ok polos">' + ik('cekBulat', 'k') + 'Link berlaku 7 hari</span>' : ' <button type="button" class="btn kecil lembut" data-x="link">' + ik('tautan', 'k') + 'Sisipkan link perpanjangan</button>') : ' <span class="kecil redup">Link dibuat oleh Admin yang berizin.</span>') : '<span class="redup">Belum ada paket.</span>');
+      }
+      function perbarui() {
+        var v = m.el.querySelector('[name=pesan]').value, a = m.el.querySelector('[data-kirim]');
+        a.href = UI2.waLink(sw.kontak_ortu, v); a.classList.toggle('mati', !v.trim() || (jenis === 'sisa' && v.indexOf('[link perpanjangan]') >= 0));
+      }
+      m.el.querySelector('.ov-kepala h2').textContent = 'Pesan ke orang tua ' + sw.nama.split(' ')[0];
+      var sub = m.el.querySelector('.ov-kepala p'); if (sub) sub.textContent = (sw.nama_ortu || 'Orang tua') + ' · ' + Inti.util.hp08(sw.kontak_ortu || '');
+      m.isi.innerHTML = UI2.seg('wa-jenis', [{ v: 'h1', label: 'Pengingat jadwal H-1', ikon: 'kalender' }, { v: 'sisa', label: 'Sisa sesi / perpanjangan', ikon: 'segitiga' }], jenis, 'lebar') +
+        '<div class="baris bungkus mt12" id="wa-catatan" style="gap:6px;min-height:32px"></div>' +
+        '<div class="fld mt12"><label for="wa-pesan">Isi pesan <span class="kecil redup">(boleh disunting)</span></label><textarea class="inp" id="wa-pesan" name="pesan" rows="10" style="font-size:14px;line-height:1.5"></textarea></div>';
+      m.kaki.innerHTML = '<button type="button" class="btn" data-x="salin">' + ik('salin', 'k') + 'Salin</button><a class="btn wa" data-kirim target="_blank" rel="noopener" href="#">' + ik('wa', 'k') + 'Buka WhatsApp</a>';
+      UI2.hidupkanSeg(m.el); susun();
+      m.el.addEventListener('seg', function (ev) { if (ev.detail.seg === 'wa-jenis') { jenis = ev.detail.v; susun(); } });
+      m.el.querySelector('[name=pesan]').addEventListener('input', perbarui);
+      m.el.addEventListener('click', function (ev) {
+        var b = ev.target.closest('[data-x]');
+        if (ev.target.closest('[data-kirim].mati')) { ev.preventDefault(); MR.UI.toast(jenis === 'sisa' && !link ? 'Sisipkan link perpanjangan dulu, atau hapus baris [link perpanjangan].' : 'Pesan masih kosong.', 'warn'); return; }
+        if (!b) return;
+        if (b.dataset.x === 'salin') UI2.salin(m.el.querySelector('[name=pesan]').value, 'Pesan disalin.');
+        if (b.dataset.x === 'link') MR.UI.kerja(b, function () { return API.T('daftar.linkBuat', { tipe: 'perpanjangan', enr_id: p.enr_id, hari: 7 }); }).then(function (r) { link = W.urlDaftar(r.token); susun(); MR.UI.toast('Link perpanjangan dibuat (berlaku 7 hari).', 'ok'); }).catch(function () { });
+      });
+    }).catch(function (er) { m.tutup(); MR.UI.galat(er); });
+  };
 })(window, document);
