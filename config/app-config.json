@@ -1,9 +1,163 @@
 {
-  "versi": 0,
-  "nama_app": "Swim Academy",
-  "tagline": "Sistem Terpadu Pelatihan & Absensi Renang",
-  "logo": "",
   "favicon": "",
+  "form": {
+    "skema": [
+      {
+        "bantu": "",
+        "inti": true,
+        "kunci": "nama",
+        "label": "Nama lengkap siswa",
+        "tipe": "teks",
+        "wajib": true
+      },
+      {
+        "bantu": "",
+        "inti": true,
+        "kunci": "tgl_lahir",
+        "label": "Tanggal lahir",
+        "tipe": "tanggal",
+        "wajib": true
+      },
+      {
+        "bantu": "Terisi otomatis dari tanggal lahir (15 tahun ke atas = Dewasa), boleh diubah.",
+        "inti": true,
+        "kunci": "kategori",
+        "label": "Kategori",
+        "opsi": [
+          "Anak",
+          "Dewasa"
+        ],
+        "tipe": "pilihan",
+        "wajib": true
+      },
+      {
+        "bantu": "",
+        "inti": true,
+        "kunci": "jenis_kelamin",
+        "label": "Jenis kelamin",
+        "opsi": [
+          "Laki-laki",
+          "Perempuan"
+        ],
+        "tipe": "pilihan",
+        "wajib": true
+      },
+      {
+        "bantu": "Untuk peserta dewasa, isi nama sendiri.",
+        "inti": true,
+        "kunci": "nama_ortu",
+        "label": "Nama orang tua / wali",
+        "tipe": "teks",
+        "wajib": true
+      },
+      {
+        "bantu": "Kode akses portal orang tua dikirim ke nomor ini.",
+        "inti": true,
+        "kunci": "kontak",
+        "label": "No. WhatsApp orang tua / wali",
+        "tipe": "teks",
+        "wajib": true
+      },
+      {
+        "bantu": "",
+        "inti": true,
+        "kunci": "email",
+        "label": "Email",
+        "tipe": "teks",
+        "wajib": false
+      },
+      {
+        "bantu": "",
+        "inti": true,
+        "kunci": "paket",
+        "label": "Paket latihan",
+        "sumber": "paket",
+        "tipe": "dropdown",
+        "wajib": true
+      },
+      {
+        "bantu": "Untuk Home Visit, pilih kolam terdekat sebagai acuan area.",
+        "inti": true,
+        "kunci": "kolam",
+        "label": "Lokasi kolam",
+        "sumber": "kolam",
+        "tipe": "dropdown",
+        "wajib": true
+      },
+      {
+        "bantu": "Contoh: Sabtu 08:00",
+        "inti": true,
+        "kunci": "jam",
+        "label": "Hari & jam yang diinginkan",
+        "tipe": "teks",
+        "wajib": true
+      },
+      {
+        "bantu": "",
+        "kunci": "catatan_kesehatan",
+        "label": "Catatan kesehatan / hal yang perlu diketahui pelatih",
+        "tipe": "area",
+        "wajib": false
+      },
+      {
+        "kunci": "_harga",
+        "label": "Ringkasan biaya",
+        "tetap": true,
+        "tipe": "blok_harga"
+      },
+      {
+        "kunci": "_rekening",
+        "label": "Rekening resmi",
+        "tetap": true,
+        "tipe": "blok_rekening"
+      },
+      {
+        "bantu": "JPG, PNG, atau PDF, maksimal 5 MB.",
+        "inti": true,
+        "kunci": "bukti",
+        "label": "Bukti transfer",
+        "tipe": "berkas",
+        "wajib": false
+      },
+      {
+        "kunci": "_persetujuan",
+        "label": "Persetujuan orang tua / wali",
+        "tetap": true,
+        "tipe": "blok_persetujuan"
+      }
+    ],
+    "versi": 1
+  },
+  "jenis_paket": [
+    "Privat",
+    "Couple",
+    "Kelas",
+    "Trial"
+  ],
   "kontak_admin": "",
-  "tema": { "font_judul": "Plus Jakarta Sans", "font_isi": "Inter", "animasi": "normal", "warna": { "primer": "#0369A1", "aksen": "#0284C7", "sidebar": "#1E2A4A", "menu": "#A8B4CF", "banner": "#075985", "latar": "#F1F5F9", "permukaan": "#FFFFFF", "primer_muda": "#E0F2FE", "teks": "#1E293B", "teks2": "#475569", "sukses": "#15803D", "peringatan": "#B45309", "bahaya": "#B91C1C" } }
+  "logo": "",
+  "nama_app": "Swim Academy",
+  "paket": [],
+  "tagline": "Sistem Terpadu Pelatihan & Absensi Renang",
+  "tema": {
+    "animasi": "normal",
+    "font_isi": "Inter",
+    "font_judul": "Plus Jakarta Sans",
+    "warna": {
+      "aksen": "#0284C7",
+      "bahaya": "#B91C1C",
+      "banner": "#075985",
+      "latar": "#F1F5F9",
+      "menu": "#A8B4CF",
+      "peringatan": "#B45309",
+      "permukaan": "#FFFFFF",
+      "primer": "#0369A1",
+      "primer_muda": "#E0F2FE",
+      "sidebar": "#1E2A4A",
+      "sukses": "#15803D",
+      "teks": "#1E293B",
+      "teks2": "#475569"
+    }
+  },
+  "versi": 1
 }
