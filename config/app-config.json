@@ -1,0 +1,9 @@
+{
+  "versi": 0,
+  "nama_app": "Swim Academy",
+  "tagline": "Sistem Terpadu Pelatihan & Absensi Renang",
+  "logo": "",
+  "favicon": "",
+  "kontak_admin": "",
+  "tema": { "font_judul": "Plus Jakarta Sans", "font_isi": "Inter", "animasi": "normal", "warna": { "primer": "#0369A1", "aksen": "#0284C7", "sidebar": "#1E2A4A", "menu": "#A8B4CF", "banner": "#075985", "latar": "#F1F5F9", "permukaan": "#FFFFFF", "primer_muda": "#E0F2FE", "teks": "#1E293B", "teks2": "#475569", "sukses": "#15803D", "peringatan": "#B45309", "bahaya": "#B91C1C" } }
+}

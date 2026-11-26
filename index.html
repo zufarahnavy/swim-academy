@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id" data-animasi="normal">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1E2A4A">
+  <meta name="description" content="Swim Academy — sistem terpadu pendaftaran, jadwal, absensi, keuangan, dan portal orang tua untuk sekolah renang.">
+  <title>Swim Academy</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/brand/ikon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/responsif.css?v=1.0.0">
+  <link rel="stylesheet" href="css/app.css?v=1.0.0">
+</head>
+<body>
+  <div id="layar-awal" class="layar-awal" aria-hidden="true">
+    <div class="pemuat">
+      <div class="orbit"><svg class="jejak" viewBox="0 0 74 74"><circle cx="37" cy="37" r="34"/></svg><svg class="cincin" viewBox="0 0 74 74"><circle cx="37" cy="37" r="34"/></svg><div class="inti"><img src="assets/logo.svg" alt=""></div></div>
+      <svg class="ekg" viewBox="0 0 180 36"><path d="M0 18c11 0 11-9 22-9s11 18 22 18 11-18 22-18 11 18 22 18 11-18 22-18 11 18 22 18 11-9 22-9h26"/></svg>
+      <div class="teks-muat">Swim Academy<span>Menyiapkan kolam data…</span></div>
+    </div>
+  </div>
+  <div id="progres" class="progres-atas"><i></i></div>
+
+  <div id="demo-pita" class="demo-pita" hidden>
+    <span class="ik-wadah" aria-hidden="true">✦</span>
+    <span class="tumbuh satu-baris"><b>Mode Demo</b> · data contoh tersimpan di browser ini, tanpa backend</span>
+    <button type="button" data-demo-peran>Ganti peran</button>
+    <button type="button" data-demo-reset>Reset data</button>
+  </div>
+
+  <div class="app" id="kerangka">
+    <aside class="sidebar" aria-label="Navigasi utama">
+      <div class="sb-kepala">
+        <span class="sb-logo"><img data-logo src="assets/logo.svg" alt=""></span>
+        <span class="sb-merek"><b data-nama-app>Swim Academy</b><small>Dashboard Terintegrasi</small></span>
+        <button type="button" class="sb-ciut" data-ciut aria-label="Ciutkan menu"><svg class="ik k" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+      </div>
+      <nav class="sb-nav" id="sb-nav"></nav>
+      <div class="sb-kaki"><div class="sb-status"><i></i><b>Sistem aktif</b><span id="sb-versi">v1.0</span></div></div>
+    </aside>
+    <div class="utama">
+      <header class="topbar">
+        <button type="button" class="btn ikon hantu tb-menu" data-menu-hp aria-label="Buka menu"><svg class="ik" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+        <button type="button" class="tb-cari" id="tb-cari" aria-label="Cari cepat"><svg class="ik" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Cari menu, aksi, atau siswa…</span><kbd class="petunjuk">Ctrl K</kbd></button>
+        <b class="tb-judul-hp" id="tb-judul"></b>
+        <span class="tumbuh"></span>
+        <span class="chip-sinkron" id="tb-jam" title="Jam server (WIB) — dipakai untuk batas absensi"><i></i><span>--:-- WIB</span></span>
+        <button type="button" class="btn ikon hantu tb-ikon" id="tb-lonceng" aria-label="Perlu perhatian"><svg class="ik" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><i class="titik" hidden></i></button>
+        <button type="button" class="tb-profil" id="tb-profil" aria-label="Akun saya"></button>
+      </header>
+      <main class="isi" id="isi"></main>
+    </div>
+  </div>
+  <nav class="bawah-nav" id="bawah-nav" aria-label="Navigasi bawah"></nav>
+  <div id="toast" class="toast-wadah" aria-live="polite"></div>
+
+  <script src="js/config.js?v=1.0.0" defer></script>
+  <script src="js/inti.js?v=1.0.0" defer></script>
+  <script src="js/demo-env.js?v=1.0.0" defer></script>
+  <script src="js/demo-seed.js?v=1.0.0" defer></script>
+  <script src="js/qr.js?v=1.0.0" defer></script>
+  <script src="js/responsif.js?v=1.0.0" defer></script>
+  <script src="js/data.js?v=1.0.0" defer></script>
+  <script src="js/ui.js?v=1.0.0" defer></script>
+  <script src="js/app.js?v=1.0.0" defer></script>
+  <script src="js/hal-publik.js?v=1.0.0" defer></script>
+  <script src="js/hal-beranda.js?v=1.0.0" defer></script>
+  <script src="js/hal-siswa.js?v=1.0.0" defer></script>
+  <script src="js/hal-operasional.js?v=1.0.0" defer></script>
+  <script src="js/hal-keuangan.js?v=1.0.0" defer></script>
+  <script src="js/hal-komunikasi.js?v=1.0.0" defer></script>
+  <script src="js/hal-pengaturan.js?v=1.0.0" defer></script>
+  <script src="js/hal-portal.js?v=1.0.0" defer></script>
+</body>
+</html>

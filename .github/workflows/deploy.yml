@@ -1,0 +1,87 @@
+# Satu workflow untuk Swim Academy (PRD 4.6):
+#  - push ke main          → langsung deploy ke GitHub Pages
+#  - repository_dispatch   → (dipicu Apps Script saat pengaturan disimpan) sinkron snapshot publik, commit, deploy, lapor balik
+#  - manual (Run workflow) → sama seperti dispatch
+# Commit oleh github-actions[bot] memakai GITHUB_TOKEN sehingga tidak memicu workflow lagi (tidak berputar).
+name: Sinkron & Deploy
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [settings-updated]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: swimacademy-pages
+  cancel-in-progress: false
+
+jobs:
+  sinkron:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      versi: ${{ steps.ambil.outputs.versi }}
+      lewati: ${{ steps.ambil.outputs.lewati }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Ambil & validasi snapshot publik dari Apps Script
+        id: ambil
+        run: python3 .github/scripts/sinkron.py
+      - name: Commit bila ada perubahan
+        if: steps.ambil.outputs.lewati != 'ya'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config/app-config.json assets/brand
+          if git diff --cached --quiet; then
+            echo "Tidak ada perubahan pengaturan."
+          else
+            git commit -m "chore: sinkron pengaturan publik v${{ steps.ambil.outputs.versi }}"
+            git push
+          fi
+
+  deploy:
+    needs: [sinkron]
+    if: always() && (needs.sinkron.result == 'success' || needs.sinkron.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Siapkan berkas situs (tanpa apps-script & berkas internal)
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'apps-script' --exclude '*.md' ./ _site/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: pages
+        uses: actions/deploy-pages@v4
+
+  lapor:
+    needs: [sinkron, deploy]
+    if: always() && github.event_name != 'push' && needs.sinkron.outputs.lewati != 'ya'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Lapor status ke backend (sync.ack)
+        env:
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+          HASIL_SINKRON: ${{ needs.sinkron.result }}
+          HASIL_DEPLOY: ${{ needs.deploy.result }}
+        run: python3 .github/scripts/lapor.py

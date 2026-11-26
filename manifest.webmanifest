@@ -1,0 +1,16 @@
+{
+  "name": "Swim Academy — Dashboard Terintegrasi",
+  "short_name": "Swim Academy",
+  "description": "Pendaftaran, jadwal, absensi, keuangan, dan portal orang tua sekolah renang.",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1E2A4A",
+  "theme_color": "#1E2A4A",
+  "lang": "id",
+  "icons": [
+    { "src": "assets/brand/ikon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/brand/ikon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/logo.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
